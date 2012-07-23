@@ -25,7 +25,7 @@ extern          "C" {
  */
 
     netsnmp_transport *netsnmp_udpipv4base_transport(struct sockaddr_in *addr,
-                                                     int local);
+                                                     char *ns, int local);
 
 #if defined(linux) && defined(IP_PKTINFO) \
     || defined(IP_RECVDSTADDR) && !defined(_MSC_VER)

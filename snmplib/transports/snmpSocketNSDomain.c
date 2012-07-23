@@ -74,6 +74,10 @@ int
 netsnmp_open_namespace_socket(int domain, int type, int protocol,
                               const char *destNs)
 {
+   if (destNs == NULL) {
+      return socket(domain, type, protocol);
+   }
+
    int rc = 0, fd = -1;
    sigset_t set, oset;
    struct stat stat_buf;

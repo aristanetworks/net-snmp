@@ -60,7 +60,7 @@ int netsnmp_udpipv4_sendto(int fd, struct in_addr *srcip, int if_index,
 #endif /* (linux && IP_PKTINFO) || IP_RECVDSTADDR */
 
 netsnmp_transport *
-netsnmp_udpipv4base_transport(struct sockaddr_in *addr, int local)
+netsnmp_udpipv4base_transport(struct sockaddr_in *addr, char *ns, int local)
 {
     netsnmp_transport *t = NULL;
     int             rc = 0, rc2;
@@ -90,8 +90,11 @@ netsnmp_udpipv4base_transport(struct sockaddr_in *addr, int local)
                 str));
     free(str);
 
-    t->sock = socket(PF_INET, SOCK_DGRAM, 0);
-    DEBUGMSGTL(("UDPBase", "openned socket %d as local=%d\n", t->sock, local)); 
+    DEBUGMSGTL(("netsnmp_udpbase", "Opening UDP socket in namespace %s...\n",
+                ns != NULL ? ns : "default"));
+    t->sock = netsnmp_open_namespace_socket(PF_INET, SOCK_DGRAM, 0, ns);
+
+    DEBUGMSGTL(("netsnmp_udpbase", "opened socket %d as local=%d\n", t->sock, local)); 
     if (t->sock < 0) {
         netsnmp_transport_free(t);
         return NULL;

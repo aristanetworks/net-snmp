@@ -132,7 +132,7 @@ netsnmp_udp_transport(struct sockaddr_in *addr, int local)
 {
     netsnmp_transport *t = NULL;
 
-    t = netsnmp_udpipv4base_transport(addr, local);
+    t = netsnmp_udpipv4base_transport(addr, NULL, local);
     if (NULL == t) {
         return NULL;
     }
