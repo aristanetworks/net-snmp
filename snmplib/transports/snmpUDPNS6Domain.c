@@ -619,98 +619,6 @@ netsnmp_udpns6_agent_config_tokens_register(void)
 #endif /* support for community based SNMP */
 }
 
-
-
-#if !defined(NETSNMP_DISABLE_SNMPV1) || !defined(NETSNMP_DISABLE_SNMPV2C)
-
-/*
- * Return 0 if there are no com2sec entries, or return 1 if there ARE com2sec
- * entries.  On return, if a com2sec entry matched the passed parameters,
- * then *secName points at the appropriate security name, or is NULL if the
- * parameters did not match any com2sec entry.
- */
-
-int
-netsnmp_udpns6_getSecName(void *opaque, int olength,
-                        const char *community,
-                        int community_len,
-                        const char **secName, const char **contextName)
-{
-    const com2Sec6Entry *c;
-    struct sockaddr_in6 *from = (struct sockaddr_in6 *) opaque;
-    char           *ztcommunity = NULL;
-    char            str6[INET6_ADDRSTRLEN];
-
-    if (secName != NULL) {
-        *secName = NULL;  /* Haven't found anything yet */
-    }
-
-    /*
-     * Special case if there are NO entries (as opposed to no MATCHING
-     * entries).
-     */
-
-    if (com2Sec6List == NULL) {
-        DEBUGMSGTL(("netsnmp_udpns6_getSecName", "no com2sec entries\n"));
-        return 0;
-    }
-
-    /*
-     * If there is no IPv6 source address, then there can be no valid security
-     * name.
-     */
-
-    if (opaque == NULL || olength != sizeof(struct sockaddr_in6)
-        || from->sin6_family != PF_INET6) {
-        DEBUGMSGTL(("netsnmp_udpns6_getSecName",
-                    "no IPv6 source address in PDU?\n"));
-        return 1;
-    }
-
-    ztcommunity = (char *) malloc(community_len + 1);
-    if (ztcommunity != NULL) {
-        memcpy(ztcommunity, community, community_len);
-        ztcommunity[community_len] = '\0';
-    }
-
-    inet_ntop(AF_INET6, &from->sin6_addr, str6, sizeof(str6));
-    DEBUGMSGTL(("netsnmp_udpns6_getSecName", "resolve <\"%s\", %s>\n",
-                ztcommunity ? ztcommunity : "<malloc error>", str6));
-
-    for (c = com2Sec6List; c != NULL; c = c->next) {
-        {
-            char buf1[INET6_ADDRSTRLEN];
-            char buf2[INET6_ADDRSTRLEN];
-            DEBUGMSGTL(("netsnmp_udpns6_getSecName",
-                        "compare <\"%s\", %s/%s>", c->community,
-                        inet_ntop(AF_INET6, &c->network, buf1, sizeof(buf1)),
-                        inet_ntop(AF_INET6, &c->mask, buf2, sizeof(buf2))));
-        }
-        if ((community_len == (int)strlen(c->community)) &&
-            (memcmp(community, c->community, community_len) == 0)) {
-            int i, ok = 1;
-            for (i = 0; ok && i < 16; ++i)
-                if ((from->sin6_addr.s6_addr[i] & c->mask.s6_addr[i]) !=
-                    c->network.s6_addr[i])
-                    ok = 0;
-            if (ok) {
-                DEBUGMSG(("netsnmp_udpns6_getSecName", "... SUCCESS\n"));
-                if (secName != NULL) {
-                    *secName = c->secName;
-                    *contextName = c->contextName;
-                }
-            }
-        }
-    }
-    DEBUGMSG(("netsnmp_udpns6_getSecName", "... nope\n"));
-
-    if (ztcommunity != NULL) {
-        free(ztcommunity);
-    }
-    return 1;
-}
-#endif /* support for community based SNMP */
-
 netsnmp_transport *
 netsnmp_udpns6_create_tstring(const char *str, int local,
 			    const char *default_target)
@@ -765,7 +673,7 @@ netsnmp_udpns6_ctor(void)
     udpns6Domain.f_create_from_tstring     = NULL;
     udpns6Domain.f_create_from_tstring_new = netsnmp_udpns6_create_tstring;
     udpns6Domain.f_create_from_ostring     = netsnmp_udpns6_create_ostring;
-    udpns6Domain.prefix = (const char**)calloc(5, sizeof(char *));
+    udpns6Domain.prefix = (const char**)calloc(1, sizeof(char *));
     udpns6Domain.prefix[0] = "udpns6";
 
     netsnmp_tdomain_register(&udpns6Domain);

@@ -1316,11 +1316,11 @@ vacm_check_view_contents(netsnmp_pdu *pdu, oid * name, size_t namelen,
 
         if (0) {
 #ifdef NETSNMP_TRANSPORT_UDP_DOMAIN
-        } else if (pdu->tDomain == netsnmpUDPDomain ||
-                   pdu->tDomain == netsnmpUDPNSDomain ||
-                   pdu->tDomain == netsnmpTCPNSDomain
+        } else if (pdu->tDomain == netsnmpUDPDomain
+                   || pdu->tDomain == netsnmpUDPNSDomain
 #ifdef NETSNMP_TRANSPORT_TCP_DOMAIN
-            || pdu->tDomain == netsnmp_snmpTCPDomain
+                   || pdu->tDomain == netsnmp_snmpTCPDomain
+                   || pdu->tDomain == netsnmpTCPNSDomain
 #endif
             ) {
             DEBUGMSGTL(("mibII/vacm_vars", "checking SecName" ));
@@ -1341,8 +1341,10 @@ vacm_check_view_contents(netsnmp_pdu *pdu, oid * name, size_t namelen,
 #endif
 #ifdef NETSNMP_TRANSPORT_UDPIPV6_DOMAIN
         } else if (pdu->tDomain == netsnmp_UDPIPv6Domain
+                   || pdu->tDomain == netsnmpUDPNS6Domain
 #ifdef NETSNMP_TRANSPORT_TCPIPV6_DOMAIN
                    || pdu->tDomain == netsnmp_TCPIPv6Domain
+                   || pdu->tDomain == netsnmpTCPNS6Domain
 #endif
             ) {
             if (!netsnmp_udp6_getSecName(pdu->transport_data,

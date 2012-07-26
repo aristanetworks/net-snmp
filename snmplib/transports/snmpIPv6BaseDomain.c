@@ -130,7 +130,7 @@ netsnmp_sockaddr_in6_2(struct sockaddr_in6 *addr,
 int netsnmp_sockaddr_in6_and_ns_2(struct sockaddr_in6 *addr, char *ns,
                                   const char *inpeername, const char *default_target)
 {
-    char           *cp = NULL, *peername = NULL, *dup = NULL;
+    char           *cp = NULL, *cp2 = NULL, *peername = NULL, *dup = NULL;
     char            debug_addr[INET6_ADDRSTRLEN];
 #if HAVE_GETADDRINFO
     struct addrinfo *addrs = NULL;
@@ -158,14 +158,12 @@ int netsnmp_sockaddr_in6_and_ns_2(struct sockaddr_in6 *addr, char *ns,
     addr->sin6_addr = in6addr_any;
     addr->sin6_port = htons((u_short)SNMP_PORT);
 
-    {
-      int port = netsnmp_ds_get_int(NETSNMP_DS_LIBRARY_ID,
-				    NETSNMP_DS_LIB_DEFAULT_PORT);
-      if (port != 0)
-        addr->sin6_port = htons((u_short)port);
-      else if (default_target != NULL)
-	netsnmp_sockaddr_in6_and_ns_2(addr, ns, default_target, NULL);
-    }
+    int port = netsnmp_ds_get_int(NETSNMP_DS_LIBRARY_ID,
+                                  NETSNMP_DS_LIB_DEFAULT_PORT);
+    if (port != 0)
+       addr->sin6_port = htons((u_short)port);
+    else if (default_target != NULL)
+       netsnmp_sockaddr_in6_and_ns_2(addr, ns, default_target, NULL);
 
     if (inpeername != NULL) {
         /*
@@ -180,10 +178,13 @@ int netsnmp_sockaddr_in6_and_ns_2(struct sockaddr_in6 *addr, char *ns,
 
         if (ns) {
             /*
-             * Try and extract prefix namespace.
+             * Try and extract prefix namespace. We're looking for the first
+             * colon that comes before the address proper, if the address is
+             * present.
              */
             cp = strchr(dup, ':');
-            if (cp != NULL) {
+            cp2 = strchr(dup, '[');
+            if (cp != NULL && (cp2 == NULL || cp2 > cp)) {
                 *cp = '\0';
                 if (cp - dup > NS_MAX_LENGTH) {
                     DEBUGMSGTL(("netsnmp_sockaddr_in6_and_ns_2", "namespace name is too long\n"));
