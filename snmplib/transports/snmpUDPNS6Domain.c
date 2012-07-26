@@ -98,7 +98,7 @@ netsnmp_udpns6_fmtaddr(netsnmp_transport *t, void *data, int len)
 
 static int
 netsnmp_udpns6_recv(netsnmp_transport *t, void *buf, int size,
-		  void **opaque, int *olength)
+                  void **opaque, int *olength)
 {
     int             rc = -1;
     socklen_t       fromlen = sizeof(struct sockaddr_in6);
@@ -114,22 +114,22 @@ netsnmp_udpns6_recv(netsnmp_transport *t, void *buf, int size,
             memset(from, 0, fromlen);
         }
 
-	while (rc < 0) {
-	  rc = recvfrom(t->sock, buf, size, 0, from, &fromlen);
-	  if (rc < 0 && errno != EINTR) {
-	    break;
-	  }
-	}
+        while (rc < 0) {
+          rc = recvfrom(t->sock, buf, size, 0, from, &fromlen);
+          if (rc < 0 && errno != EINTR) {
+            break;
+          }
+        }
 
         if (rc >= 0) {
-	    char *str = netsnmp_udpns6_fmtaddr(NULL, from, fromlen);
+            char *str = netsnmp_udpns6_fmtaddr(NULL, from, fromlen);
             DEBUGMSGTL(("netsnmp_udpns6",
-			"recvfrom fd %d got %d bytes (from %s)\n", t->sock,
+                        "recvfrom fd %d got %d bytes (from %s)\n", t->sock,
                         rc, str));
             free(str);
         } else {
             DEBUGMSGTL(("netsnmp_udpns6", "recvfrom fd %d err %d (\"%s\")\n",
-			t->sock, errno, strerror(errno)));
+                        t->sock, errno, strerror(errno)));
         }
         *opaque = (void *) from;
         *olength = sizeof(struct sockaddr_in6);
@@ -141,7 +141,7 @@ netsnmp_udpns6_recv(netsnmp_transport *t, void *buf, int size,
 
 static int
 netsnmp_udpns6_send(netsnmp_transport *t, void *buf, int size,
-		  void **opaque, int *olength)
+                  void **opaque, int *olength)
 {
     int rc = -1;
     struct sockaddr *to = NULL;
@@ -157,16 +157,16 @@ netsnmp_udpns6_send(netsnmp_transport *t, void *buf, int size,
 
     if (to != NULL && t != NULL && t->sock >= 0) {
         char *str = netsnmp_udpns6_fmtaddr(NULL, (void *)to,
-					    sizeof(struct sockaddr_in6));
+                                            sizeof(struct sockaddr_in6));
         DEBUGMSGTL(("netsnmp_udpns6", "send %d bytes from %p to %s on fd %d\n",
                     size, buf, str, t->sock));
         free(str);
-	while (rc < 0) {
-	    rc = sendto(t->sock, buf, size, 0, to,sizeof(struct sockaddr_in6));
-	    if (rc < 0 && errno != EINTR) {
-		break;
-	    }
-	}
+        while (rc < 0) {
+            rc = sendto(t->sock, buf, size, 0, to,sizeof(struct sockaddr_in6));
+            if (rc < 0 && errno != EINTR) {
+                break;
+            }
+        }
     }
     return rc;
 }
@@ -200,7 +200,7 @@ netsnmp_udpns6_transport(struct sockaddr_in6 *addr, char *ns, int local)
     }
 
     str = netsnmp_udpns6_fmtaddr(NULL, (void *) addr,
-				  sizeof(struct sockaddr_in6));
+                                  sizeof(struct sockaddr_in6));
     DEBUGMSGTL(("netsnmp_udpns6", "open %s %s\n", local ? "local" : "remote",
                 str));
     free(str);
@@ -231,15 +231,15 @@ netsnmp_udpns6_transport(struct sockaddr_in6 *addr, char *ns, int local)
 #ifdef IPV6_V6ONLY
         /* Try to restrict PF_INET6 socket to IPv6 communications only. */
         {
-	  int one=1;
-	  if (setsockopt(t->sock, IPPROTO_IPV6, IPV6_V6ONLY, (char *)&one, sizeof(one)) != 0) {
-	    DEBUGMSGTL(("netsnmp_udpns6", "couldn't set IPV6_V6ONLY to %d bytes: %s\n", one, strerror(errno)));
-	  } 
-	}
+          int one=1;
+          if (setsockopt(t->sock, IPPROTO_IPV6, IPV6_V6ONLY, (char *)&one, sizeof(one)) != 0) {
+            DEBUGMSGTL(("netsnmp_udpns6", "couldn't set IPV6_V6ONLY to %d bytes: %s\n", one, strerror(errno)));
+          } 
+        }
 #endif
 
         rc = bind(t->sock, (struct sockaddr *) addr,
-		  sizeof(struct sockaddr_in6));
+                  sizeof(struct sockaddr_in6));
         if (rc != 0) {
             netsnmp_socketbase_close(t);
             netsnmp_transport_free(t);
@@ -621,7 +621,7 @@ netsnmp_udpns6_agent_config_tokens_register(void)
 
 netsnmp_transport *
 netsnmp_udpns6_create_tstring(const char *str, int local,
-			    const char *default_target)
+                            const char *default_target)
 {
     struct sockaddr_in6 addr;
     char ns[NS_MAX_LENGTH];

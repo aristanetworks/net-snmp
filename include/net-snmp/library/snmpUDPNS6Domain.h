@@ -25,13 +25,6 @@ NETSNMP_IMPORT
 void            netsnmp_udpns6_parse_security(const char *token,
                                             char *param);
 
-NETSNMP_IMPORT
-int             netsnmp_udpns6_getSecName(void *opaque, int olength,
-                                        const char *community,
-                                        int community_len,
-                                        const char **secname,
-                                        const char **contextName);
-
 /*
  * "Constructor" for transport domain object.
  */
