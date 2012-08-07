@@ -1314,13 +1314,14 @@ vacm_check_view_contents(netsnmp_pdu *pdu, oid * name, size_t namelen,
          * community string to a security name for us.  
          */
 
-        if (0) {
+        if (0
 #ifdef NETSNMP_TRANSPORT_UDP_DOMAIN
-        } else if (pdu->tDomain == netsnmpUDPDomain
-                   || pdu->tDomain == netsnmpUDPNSDomain
+            || pdu->tDomain == netsnmpUDPDomain
+            || pdu->tDomain == netsnmpUDPNSDomain
+#endif
 #ifdef NETSNMP_TRANSPORT_TCP_DOMAIN
-                   || pdu->tDomain == netsnmp_snmpTCPDomain
-                   || pdu->tDomain == netsnmpTCPNSDomain
+            || pdu->tDomain == netsnmp_snmpTCPDomain
+            || pdu->tDomain == netsnmpTCPNSDomain
 #endif
             ) {
             DEBUGMSGTL(("mibII/vacm_vars", "checking SecName" ));
@@ -1338,13 +1339,14 @@ vacm_check_view_contents(netsnmp_pdu *pdu, oid * name, size_t namelen,
             SNMP_FREE(pdu->contextName);
             pdu->contextName = strdup(contextName);
             pdu->contextNameLen = strlen(contextName);
-#endif
+        } else if (0
 #ifdef NETSNMP_TRANSPORT_UDPIPV6_DOMAIN
-        } else if (pdu->tDomain == netsnmp_UDPIPv6Domain
-                   || pdu->tDomain == netsnmpUDPNS6Domain
+            || pdu->tDomain == netsnmp_UDPIPv6Domain
+            || pdu->tDomain == netsnmpUDPNS6Domain
+#endif
 #ifdef NETSNMP_TRANSPORT_TCPIPV6_DOMAIN
-                   || pdu->tDomain == netsnmp_TCPIPv6Domain
-                   || pdu->tDomain == netsnmpTCPNS6Domain
+            || pdu->tDomain == netsnmp_TCPIPv6Domain
+            || pdu->tDomain == netsnmpTCPNS6Domain
 #endif
             ) {
             if (!netsnmp_udp6_getSecName(pdu->transport_data,
@@ -1361,7 +1363,6 @@ vacm_check_view_contents(netsnmp_pdu *pdu, oid * name, size_t namelen,
             SNMP_FREE(pdu->contextName);
             pdu->contextName = strdup(contextName);
             pdu->contextNameLen = strlen(contextName);
-#endif
 #ifdef NETSNMP_TRANSPORT_UNIX_DOMAIN
         } else if (pdu->tDomain == netsnmp_UnixDomain){
             if (!netsnmp_unix_getSecName(pdu->transport_data,

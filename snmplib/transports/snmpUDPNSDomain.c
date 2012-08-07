@@ -479,11 +479,30 @@ netsnmp_udpns_create_tstring(const char *str, int local,
     }
 }
 
+/*
+ * See:
+ *
+ * ARISTA-SNMP-TRANSPORTS-MIB.txt
+ *
+ * For details of the TC which we are using for the mapping here.
+ */
 netsnmp_transport *
 netsnmp_udpns_create_ostring(const u_char * o, size_t o_len, int local)
 {
-   DEBUGMSGTL(("netsnmp_udpns", "netsnmp_tcpns_create_ostring not implemented\n"));
-   return NULL;
+    struct sockaddr_in addr;
+
+    if (o_len == 6) {
+        const u_char * o_addr = o + (o_len - 4);
+        unsigned short porttmp = (o[4] << 8) + o[5];
+        char ns[o_len - 3];
+        memset(ns, 0, o_len - 3);
+        strncpy(ns, o, o_len - 4);
+        addr.sin_family = AF_INET;
+        memcpy((u_char *) & (addr.sin_addr.s_addr), o, 4);
+        addr.sin_port = htons(porttmp);
+        return netsnmp_udpns_transport(&addr, ns, local);
+    }
+    return NULL;
 }
 
 void

@@ -132,7 +132,7 @@ netsnmp_tcpns6_accept(netsnmp_transport *t)
  */
 
 netsnmp_transport *
-netsnmp_tcpns6_transport(struct sockaddr_in6 *addr, char *ns, int local)
+netsnmp_tcpns6_transport(struct sockaddr_in6 *addr, const char *ns, int local)
 {
     netsnmp_transport *t = NULL;
     int             rc = 0;
@@ -307,12 +307,6 @@ netsnmp_tcpns6_transport(struct sockaddr_in6 *addr, char *ns, int local)
     return t;
 }
 
-/*
- * Not extern but still defined in snmpUDPNS6Domain.c
- */
-extern int
-netsnmp_sockaddr_in6_and_ns_2(struct sockaddr_in6*, char *ns, const char*, const char*);
-
 netsnmp_transport *
 netsnmp_tcpns6_create_tstring(const char *str, int local,
                             const char *default_target)
@@ -320,17 +314,38 @@ netsnmp_tcpns6_create_tstring(const char *str, int local,
     struct sockaddr_in6 addr;
     char ns[NS_MAX_LENGTH];
 
-    if (netsnmp_sockaddr_in6_and_ns_2(&addr, ns, str, default_target)) {
+    if (netsnmp_sockaddr_in6_and_ns(&addr, ns, str, default_target)) {
         return netsnmp_tcpns6_transport(&addr, ns, local);
     } else {
         return NULL;
     }
 }
 
+/*
+ * See:
+ *
+ * ARISTA-SNMP-TRANSPORTS-MIB.txt
+ *
+ * For details of the TC which we are using for the mapping here.
+ */
 netsnmp_transport *
 netsnmp_tcpns6_create_ostring(const u_char * o, size_t o_len, int local)
 {
-    DEBUGMSGTL(("netsnmp_tcpns6", "netsnmp_tcpns6_create_ostring not implemented\n"));
+    struct sockaddr_in6 addr;
+
+    if (o_len > 18) {
+        const u_char * o_addr = o + (o_len - 18);
+        char ns[o_len - 17];
+        memset(ns, 0, o_len - 17);
+        strncpy(ns, o, o_len - 18);
+        memset((u_char *) & addr, 0, sizeof(struct sockaddr_in6));
+        addr.sin6_family = AF_INET6;
+        memcpy((u_char *) & (addr.sin6_addr.s6_addr), o_addr, 16);
+        addr.sin6_port = (o_addr[16] << 8) + o_addr[17];
+        return netsnmp_tcpns6_transport(&addr, ns, local);
+    }
+
+
     return NULL;
 }
 

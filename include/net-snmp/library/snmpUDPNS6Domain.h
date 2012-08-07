@@ -16,14 +16,13 @@ config_require(SocketNS)
 #include <net-snmp/library/snmpIPv6BaseDomain.h>
 #include <net-snmp/library/snmpSocketNSDomain.h>
 
-netsnmp_transport *netsnmp_udpns6_transport(struct sockaddr_in6 *addr, char *ns,
-                                            int local);
+netsnmp_transport *netsnmp_udpns6_transport(struct sockaddr_in6 *addr,
+      const char *ns, int local);
 
 NETSNMP_IMPORT
 void            netsnmp_udpns6_agent_config_tokens_register(void);
 NETSNMP_IMPORT
-void            netsnmp_udpns6_parse_security(const char *token,
-                                            char *param);
+void            netsnmp_udpns6_parse_security(const char *token, char *param);
 
 /*
  * "Constructor" for transport domain object.

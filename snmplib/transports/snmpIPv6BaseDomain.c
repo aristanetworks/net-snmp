@@ -124,11 +124,11 @@ int
 netsnmp_sockaddr_in6_2(struct sockaddr_in6 *addr,
                        const char *inpeername, const char *default_target)
 {
-    return netsnmp_sockaddr_in6_and_ns_2(addr, NULL, inpeername, default_target);
+    return netsnmp_sockaddr_in6_and_ns(addr, NULL, inpeername, default_target);
 }
 
-int netsnmp_sockaddr_in6_and_ns_2(struct sockaddr_in6 *addr, char *ns,
-                                  const char *inpeername, const char *default_target)
+int netsnmp_sockaddr_in6_and_ns(struct sockaddr_in6 *addr, char *ns,
+                                const char *inpeername, const char *default_target)
 {
     char           *cp = NULL, *cp2 = NULL, *peername = NULL, *dup = NULL;
     char            debug_addr[INET6_ADDRSTRLEN];
@@ -163,7 +163,7 @@ int netsnmp_sockaddr_in6_and_ns_2(struct sockaddr_in6 *addr, char *ns,
     if (port != 0)
        addr->sin6_port = htons((u_short)port);
     else if (default_target != NULL)
-       netsnmp_sockaddr_in6_and_ns_2(addr, ns, default_target, NULL);
+       netsnmp_sockaddr_in6_and_ns(addr, ns, default_target, NULL);
 
     if (inpeername != NULL) {
         /*
@@ -187,14 +187,14 @@ int netsnmp_sockaddr_in6_and_ns_2(struct sockaddr_in6 *addr, char *ns,
             if (cp != NULL && (cp2 == NULL || cp2 > cp)) {
                 *cp = '\0';
                 if (cp - dup > NS_MAX_LENGTH) {
-                    DEBUGMSGTL(("netsnmp_sockaddr_in6_and_ns_2", "namespace name is too long\n"));
+                    DEBUGMSGTL(("netsnmp_sockaddr_in6_and_ns", "namespace name is too long\n"));
                     free(dup);
                     return 0;
                 }
                 strcpy(ns, dup);
                 peername = cp + 1;
             } else {
-                DEBUGMSGTL(("netsnmp_sockaddr_in6_and_ns_2", "namespace or port missing\n"));
+                DEBUGMSGTL(("netsnmp_sockaddr_in6_and_ns", "namespace or port missing\n"));
                 free(dup);
                 return 0;
             }

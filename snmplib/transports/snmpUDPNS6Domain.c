@@ -88,8 +88,6 @@ netsnmp_udpns6_fmtaddr(netsnmp_transport *t, void *data, int len)
     return netsnmp_ipv6_fmtaddr("UDPNS/IPv6", t, data, len);
 }
 
-
-
 /*
  * You can write something into opaque that will subsequently get passed back 
  * to your send function if you like.  For instance, you might want to
@@ -179,7 +177,7 @@ netsnmp_udpns6_send(netsnmp_transport *t, void *buf, int size,
  */
 
 netsnmp_transport *
-netsnmp_udpns6_transport(struct sockaddr_in6 *addr, char *ns, int local)
+netsnmp_udpns6_transport(struct sockaddr_in6 *addr, const char *ns, int local)
 {
     netsnmp_transport *t = NULL;
     int             rc = 0;
@@ -626,7 +624,7 @@ netsnmp_udpns6_create_tstring(const char *str, int local,
     struct sockaddr_in6 addr;
     char ns[NS_MAX_LENGTH];
 
-    if (netsnmp_sockaddr_in6_and_ns_2(&addr, ns, str, default_target)) {
+    if (netsnmp_sockaddr_in6_and_ns(&addr, ns, str, default_target)) {
         return netsnmp_udpns6_transport(&addr, ns, local);
     } else {
         return NULL;
@@ -636,31 +634,29 @@ netsnmp_udpns6_create_tstring(const char *str, int local,
 
 /*
  * See:
- * 
- * http://www.ietf.org/internet-drafts/draft-ietf-ops-taddress-mib-01.txt
- * 
- * (or newer equivalent) for details of the TC which we are using for
- * the mapping here.  
  *
- * Not implemented for namespace - TODO: Determine a textual convention to
- * use.
+ * ARISTA-SNMP-TRANSPORTS-MIB.txt
+ *
+ * For details of the TC which we are using for the mapping here.
  */
 
 netsnmp_transport *
 netsnmp_udpns6_create_ostring(const u_char * o, size_t o_len, int local)
 {
-   /*
     struct sockaddr_in6 addr;
 
-    if (o_len == 18) {
+    if (o_len > 18) {
+        const u_char * o_addr = o + (o_len - 18);
+        char ns[o_len - 17];
+        memset(ns, 0, o_len - 17);
+        strncpy(ns, o, o_len - 18);
         memset((u_char *) & addr, 0, sizeof(struct sockaddr_in6));
         addr.sin6_family = AF_INET6;
-        memcpy((u_char *) & (addr.sin6_addr.s6_addr), o, 16);
-        addr.sin6_port = (o[16] << 8) + o[17];
-        return netsnmp_udpns6_transport(&addr, local);
+        memcpy((u_char *) & (addr.sin6_addr.s6_addr), o_addr, 16);
+        addr.sin6_port = (o_addr[16] << 8) + o_addr[17];
+        return netsnmp_udpns6_transport(&addr, ns, local);
     }
-    */
-    DEBUGMSGTL(("netsnmp_udpns6", "netsnmp_udpns6_create_ostring not implemented\n"));
+
     return NULL;
 }
 
