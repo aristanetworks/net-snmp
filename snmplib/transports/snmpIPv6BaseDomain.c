@@ -127,6 +127,14 @@ netsnmp_sockaddr_in6_2(struct sockaddr_in6 *addr,
     return netsnmp_sockaddr_in6_and_ns(addr, NULL, inpeername, default_target);
 }
 
+/*
+ * Convert an input string inpeername to a sockaddr_in6 and (optionally) a
+ * namespace. If ns is null, then the input string is valid if its form is one of
+ * target:port, target or port, where target is either an IPv6 address wrapped in
+ * [brackets] or a hostname which resolves to an IPv6 address. If ns is not null,
+ * then namespace: is prepended to the above forms. Returns 0 if the form is not
+ * correct.
+ */
 int netsnmp_sockaddr_in6_and_ns(struct sockaddr_in6 *addr, char *ns,
                                 const char *inpeername, const char *default_target)
 {

@@ -17,10 +17,10 @@ extern          "C" {
 #endif
 
 netsnmp_transport *netsnmp_tcpns6_transport(struct sockaddr_in6 *addr,
-      const char *ns, int local);
+                                            const char *ns, int local);
 
 /*
- * "Constructor" for transport domain object.  
+ * "Constructor" for transport domain object.
  */
 
 NETSNMP_IMPORT void     netsnmp_tcpipv6_ctor(void);
