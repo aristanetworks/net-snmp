@@ -473,6 +473,8 @@ handle_master_agentx_packet(int operation,
                             int reqid, netsnmp_pdu *pdu, void *magic)
 {
     netsnmp_agent_session *asp;
+    struct timeval begin, end, delta;
+    double handler_usec;
 
     if (operation == NETSNMP_CALLBACK_OP_DISCONNECT) {
         DEBUGMSGTL(("agentx/master",
@@ -506,6 +508,8 @@ handle_master_agentx_packet(int operation,
                 (unsigned long)pdu->reqid, (unsigned long)pdu->transid,
 		(unsigned long)pdu->sessid));
     
+    gettimeofday(&begin, NULL);
+
     switch (pdu->command) {
     case AGENTX_MSG_OPEN:
         asp->pdu->sessid = open_agentx_session(session, pdu);
@@ -573,6 +577,18 @@ handle_master_agentx_packet(int operation,
     default:
         asp->status = AGENTX_ERR_PARSE_FAILED;
         break;
+    }
+
+    gettimeofday(&end, NULL);
+    NETSNMP_TIMERSUB(&end, &begin, &delta);
+    handler_usec = delta.tv_sec * 1e6 + delta.tv_usec;
+    if (getenv("ABUILD")) {
+       char buf[80];
+       snprintf(buf, sizeof(buf) - 1,
+                "Handler for command %d took %f usecs\n", pdu->command, handler_usec);
+       // Using LOG_WARNING instead of LOG_INFO so that we don't have to fiddle with
+       // log-level settings.
+       snmp_log(LOG_WARNING, buf);
     }
 
     asp->pdu->time = netsnmp_get_agent_uptime();
