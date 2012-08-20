@@ -173,6 +173,7 @@ typedef struct com2SecEntry_s {
     struct com2SecEntry_s *next;
     in_addr_t   network;
     in_addr_t   mask;
+    int         negate;
     const char  community[1];
 } com2SecEntry;
 
@@ -187,8 +188,10 @@ netsnmp_udp_parse_security(const char *token, char *param)
     size_t          contextNameLen;
     char            community[COMMUNITY_MAX_LEN + 1];
     size_t          communityLen;
-    char            source[270]; /* dns-name(253)+/(1)+mask(15)+\0(1) */
+    char            source[271]; /* !(1)+dns-name(253)+/(1)+mask(15)+\0(1) */
+    char            *sourcep;
     struct in_addr  network, mask;
+    int             negate;
 
     /*
      * Get security, source address/netmask and community strings.
@@ -262,17 +265,26 @@ netsnmp_udp_parse_security(const char *token, char *param)
     if (strcmp(source, "default") == 0) {
         network.s_addr = 0;
         mask.s_addr = 0;
+        negate = 0;
     } else {
+        if (*source == '!') {
+            negate = 1;
+            sourcep = source + 1;
+        } else {
+            negate = 0;
+            sourcep = source;
+        }
+
         /* Split the source/netmask parts */
-        char *strmask = strchr(source, '/');
+        char *strmask = strchr(sourcep, '/');
         if (strmask != NULL)
             /* Mask given. */
             *strmask++ = '\0';
 
         /* Try interpreting as a dotted quad. */
-        if (inet_pton(AF_INET, source, &network) == 0) {
+        if (inet_pton(AF_INET, sourcep, &network) == 0) {
             /* Nope, wasn't a dotted quad.  Must be a hostname. */
-            int ret = netsnmp_gethostbyname_v4(source, &network.s_addr);
+            int ret = netsnmp_gethostbyname_v4(sourcep, &network.s_addr);
             if (ret < 0) {
                 config_perror("cannot resolve source hostname");
                 return;
@@ -290,6 +302,8 @@ netsnmp_udp_parse_security(const char *token, char *param)
             if (*cp == '\0') {
                 if (0 < maskLen && maskLen <= 32)
                     mask.s_addr = htonl((in_addr_t)(~0UL << (32 - maskLen)));
+                else if (0 == maskLen)
+                    mask.s_addr = 0;
                 else {
                     config_perror("bad mask length");
                     return;
@@ -348,6 +362,7 @@ netsnmp_udp_parse_security(const char *token, char *param)
             e->contextName = last - 1;
         e->network = network.s_addr;
         e->mask = mask.s_addr;
+        e->negate = negate;
         e->next = NULL;
 
         if (com2SecListLast != NULL) {
@@ -456,6 +471,14 @@ netsnmp_udp_getSecName(void *opaque, int olength,
 	    (memcmp(community, c->community, community_len) == 0) &&
             ((from->sin_addr.s_addr & c->mask) == c->network)) {
             DEBUGMSG(("netsnmp_udp_getSecName", "... SUCCESS\n"));
+            if (c->negate) {
+                /*
+                 * If we matched a negative entry, then claim that we
+                 * matched nothing.
+                 */
+                DEBUGMSG(("netsnmp_udp_getSecName", "... <negative entry>\n"));
+                return 0;
+            }
             if (secName != NULL) {
                 *secName = c->secName;
                 *contextName = c->contextName;
