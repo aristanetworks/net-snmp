@@ -2564,6 +2564,7 @@ netsnmp_getbulk(PyObject *self, PyObject *args)
   }
 
  done:
+  Py_XDECREF(varbinds);
   SAFE_FREE(oid_arr);
   return (val_tuple ? val_tuple : Py_BuildValue(""));
 }
