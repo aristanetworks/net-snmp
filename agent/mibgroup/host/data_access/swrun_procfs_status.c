@@ -94,10 +94,14 @@ netsnmp_arch_swrun_container_load( netsnmp_container *container, u_int flags)
         }
         fclose(fp);
 
-        for ( cp = buf; *cp != ':'; cp++ )
+        for ( cp = buf; *cp && *cp != ':'; cp++ )
             ;
-        while (isspace(*(++cp)))	/* Skip ':' and following spaces */
+        while (*cp && isspace(*(++cp)))	/* Skip ':' and following spaces */
             ;
+	if (!*cp) {
+	    netsnmp_swrun_entry_free(entry);
+	    continue;
+	}
         entry->hrSWRunName_len = snprintf(entry->hrSWRunName,
                                    sizeof(entry->hrSWRunName)-1, "%s", cp);
         if ( '\n' == entry->hrSWRunName[ entry->hrSWRunName_len-1 ]) {
@@ -172,9 +176,9 @@ netsnmp_arch_swrun_container_load( netsnmp_container *container, u_int flags)
         fclose(fp);
 
         cp = buf;
-        while ( ' ' != *(cp++))    /* Skip first field */
+        while ( *cp && ' ' != *(cp++))    /* Skip first field */
             ;
-        while ( ' ' != *(cp++))    /* Skip second field */
+        while ( *cp && ' ' != *(cp++))    /* Skip second field */
             ;
         
         switch (*cp) {
@@ -190,16 +194,16 @@ netsnmp_arch_swrun_container_load( netsnmp_container *container, u_int flags)
                    break;
         }
         for (i=11; i; i--) {   /* Skip STATUS + 10 fields */
-            while (' ' != *(cp++))
+            while (*cp && ' ' != *(cp++))
                 ;
         }
         entry->hrSWRunPerfCPU  = atoi( cp );   /*  utime */
-        while ( ' ' != *(cp++))		       /* Skip utime */
+        while (*cp && ' ' != *(cp++))		       /* Skip utime */
             ;
         entry->hrSWRunPerfCPU += atoi( cp );   /* +stime */
 
         for (i=9; i; i--) {   /* Skip stime + 8 fields */
-            while (' ' != *(cp++))
+            while (*cp && ' ' != *(cp++))
                 ;
         }
         entry->hrSWRunPerfMem  = atoi( cp );   /*  rss */
