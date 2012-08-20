@@ -461,20 +461,40 @@ agentx_send_ping(netsnmp_session * ss)
 {
     netsnmp_pdu    *pdu, *response;
 
-    if (ss == NULL || !IS_AGENTX_VERSION(ss->version)) {
+    if (ss == NULL) {
+       snmp_log(LOG_WARNING,
+                "netsnmp_session is NULL\n");
+       return 0;
+    }
+
+    if (!IS_AGENTX_VERSION(ss->version)) {
+        snmp_log(LOG_WARNING,
+                 "erroneous session version: %ld\n",
+                 ss->version);
         return 0;
     }
 
     pdu = snmp_pdu_create(AGENTX_MSG_PING);
-    if (pdu == NULL)
-        return 0;
+    if (pdu == NULL) {
+       snmp_log(LOG_WARNING,
+                "snmp_pdu_create(AGENTX_MSG_PING) returned NULL\n");
+       return 0;
+    }
     pdu->time = 0;
     pdu->sessid = ss->sessid;
 
-    if (agentx_synch_response(ss, pdu, &response) != STAT_SUCCESS)
+    int syncResponse = agentx_synch_response(ss, pdu, &response);
+    if (syncResponse != STAT_SUCCESS) {
+       snmp_log(LOG_WARNING,
+                "agentx_synch_response returned %d\n",
+                syncResponse);
         return 0;
+    }
 
     if (response->errstat != SNMP_ERR_NOERROR) {
+       snmp_log(LOG_WARNING,
+                "agentx_synch_response returned response->errstat = %d\n",
+                response->errstat );
         snmp_free_pdu(response);
         return 0;
     }

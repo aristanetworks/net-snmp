@@ -4747,6 +4747,8 @@ _sess_async_send(void *sessp,
     long            reqid;
 
     if (slp == NULL) {
+        snmp_log(LOG_WARNING,
+                  "_sess_async_send returned 0 because slp is NULL\n");
         return 0;
     } else {
         session = slp->session;
@@ -4754,11 +4756,18 @@ _sess_async_send(void *sessp,
         transport = slp->transport;
         if (!session || !isp || !transport) {
             DEBUGMSGTL(("sess_async_send", "send fail: closing...\n"));
+            snmp_log(LOG_WARNING,
+                     "_sess_async_send returned 0:(session,isp,transport)=(%d,%d,%d)\n",
+                     session == NULL,
+                     isp == NULL,
+                     transport == NULL );
             return 0;
         }
     }
 
     if (pdu == NULL) {
+        snmp_log(LOG_WARNING,
+                  "_sess_async_send returned 0 because pdu is NULL\n");
         session->s_snmp_errno = SNMPERR_NULL_PDU;
         return 0;
     }
@@ -4772,6 +4781,8 @@ _sess_async_send(void *sessp,
     if (pdu->version == SNMP_DEFAULT_VERSION) {
         if (session->version == SNMP_DEFAULT_VERSION) {
             session->s_snmp_errno = SNMPERR_BAD_VERSION;
+            snmp_log(LOG_WARNING,
+                     "_sess_async_send returned 0 when pdu->version == SNMP_DEFAULT_VERSION\n");
             return 0;
         }
         pdu->version = session->version;
@@ -4783,6 +4794,9 @@ _sess_async_send(void *sessp,
         /*
          * ENHANCE: we should support multi-lingual sessions  
          */
+        snmp_log(LOG_WARNING,
+                 "_sess_async_send returned 0:(pdu->version,session->version)=(%ld,%ld)\n",
+                 pdu->version, session->version);
         session->s_snmp_errno = SNMPERR_BAD_VERSION;
         return 0;
     }
@@ -4816,13 +4830,18 @@ _sess_async_send(void *sessp,
         int rc;
         DEBUGMSGTL(("snmpv3_build", "delayed probe for engineID\n"));
         rc = snmpv3_engineID_probe(slp, session);
-        if (rc == 0)
+        if (rc == 0) {
+            snmp_log(LOG_WARNING,
+                     "_sess_async_send:snmpv3_engineID_probe returned 0\n");
             return 0; /* s_snmp_errno already set */
+        }
     }
 
     if ((pktbuf = (u_char *)malloc(2048)) == NULL) {
         DEBUGMSGTL(("sess_async_send",
                     "couldn't malloc initial packet buffer\n"));
+        snmp_log(LOG_WARNING,
+                 "_sess_async_send returned 0 because pktbuf is NULL\n");
         session->s_snmp_errno = SNMPERR_MALLOC;
         return 0;
     } else {
@@ -4851,6 +4870,8 @@ _sess_async_send(void *sessp,
         case SNMP_MSG_REPORT:
         case SNMP_MSG_INFORM:
             session->s_snmp_errno = snmp_errno = SNMPERR_NO_VARS;
+            snmp_log(LOG_WARNING,
+                     "_sess_async_send returned 0 because of wrong pdu->command\n");
             return 0;
         case SNMP_MSG_TRAP:
             break;
@@ -4891,6 +4912,8 @@ _sess_async_send(void *sessp,
     if (result < 0) {
         DEBUGMSGTL(("sess_async_send", "encoding failure\n"));
         SNMP_FREE(pktbuf);
+        snmp_log(LOG_WARNING,
+                 "_sess_async_send returned 0 because of encoding failure\n");
         return 0;
     }
 
@@ -4905,6 +4928,9 @@ _sess_async_send(void *sessp,
                     (unsigned long)length, (unsigned long)session->sndMsgMaxSize));
         session->s_snmp_errno = SNMPERR_TOO_LONG;
         SNMP_FREE(pktbuf);
+        snmp_log(LOG_WARNING,
+                 "_sess_async_send returned 0 because length of packet (%lu) exceeds session maximum (%lu)\n",
+                 (unsigned long)length, (unsigned long)session->sndMsgMaxSize);
         return 0;
     }
 
@@ -4919,6 +4945,9 @@ _sess_async_send(void *sessp,
                     (unsigned long)length, (unsigned long)transport->msgMaxSize));
         session->s_snmp_errno = SNMPERR_TOO_LONG;
         SNMP_FREE(pktbuf);
+        snmp_log(LOG_WARNING,
+                 "_sess_async_send returned 0 because length of packet (%lu) exceeds transport maximum (%lu)\n",
+                 (unsigned long)length, (unsigned long)transport->msgMaxSize);
         return 0;
     }
 
@@ -4937,6 +4966,19 @@ _sess_async_send(void *sessp,
     if (result < 0) {
         session->s_snmp_errno = SNMPERR_BAD_SENDTO;
         session->s_errno = errno;
+        snmp_log(LOG_WARNING,
+                 "_sess_async_send returned 0 because result=%d(errno=%d:%s)\n",
+                 result,errno,strerror(errno));
+        if (transport) {
+           void **opaque = &(pdu->transport_data);
+           int *olength = &(pdu->transport_data_length);
+           char *transport_str = netsnmp_transport_peer_string(transport,
+                                                               opaque ? *opaque : NULL,
+                                                               olength ? *olength : 0);
+           snmp_log(LOG_WARNING,
+                    "_sess_async_send returned 0: transport=%s\n",
+                    transport_str);
+        }
         return 0;
     }
 
@@ -4953,6 +4995,8 @@ _sess_async_send(void *sessp,
                                              sizeof(netsnmp_request_list));
         if (rp == NULL) {
             session->s_snmp_errno = SNMPERR_GENERR;
+            snmp_log(LOG_WARNING,
+                     "_sess_async_send returned 0 because rp == NULL\n");
             return 0;
         }
 
@@ -5012,6 +5056,8 @@ snmp_sess_async_send(void *sessp,
 
     if (sessp == NULL) {
         snmp_errno = SNMPERR_BAD_SESSION;       /*MTCRITICAL_RESOURCE */
+        snmp_log(LOG_WARNING,
+                  "snmp_sess_async_send returned 0 because sessp is NULL\n");
         return (0);
     }
     /*

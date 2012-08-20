@@ -1043,6 +1043,9 @@ snmp_synch_response_cb(netsnmp_session * ss,
     ss->callback_magic = (void *) state;
 
     if ((state->reqid = snmp_send(ss, pdu)) == 0) {
+        snmp_log(LOG_WARNING,
+                 "snmp_synch_response_cb:snmp_send(ss, pdu) returned 0(%s)\n",
+                 strerror(ss->s_errno));
         snmp_free_pdu(pdu);
         state->status = STAT_ERROR;
     } else
@@ -1084,6 +1087,8 @@ snmp_synch_response_cb(netsnmp_session * ss,
                  * FALLTHRU 
                  */
             default:
+                snmp_log(LOG_WARNING,
+                         "snmp_synch_response_cb:select(...) returned -1\n");
                 state->status = STAT_ERROR;
                 state->waiting = 0;
             }
