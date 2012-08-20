@@ -413,11 +413,13 @@ netsnmp_unix_transport(struct sockaddr_un *addr, int local)
         rc = connect(t->sock, (struct sockaddr *) addr,
                      sizeof(struct sockaddr_un));
         if (rc != 0) {
+            int saved_errno = errno;
             DEBUGMSGTL(("netsnmp_unix_transport",
                         "couldn't connect to \"%s\", errno %d (%s)\n",
                         addr->sun_path, errno, strerror(errno)));
             netsnmp_unix_close(t);
             netsnmp_transport_free(t);
+            errno = saved_errno;
             return NULL;
         }
 

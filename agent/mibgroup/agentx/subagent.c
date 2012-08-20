@@ -4,6 +4,7 @@
 #include <net-snmp/net-snmp-config.h>
 #include <net-snmp/net-snmp-features.h>
 
+#include <errno.h>
 #include <sys/types.h>
 #ifdef HAVE_STDLIB_H
 #include <stdlib.h>
@@ -803,6 +804,7 @@ subagent_open_master_session(void)
          * Diagnose snmp_open errors with the input
          * netsnmp_session pointer.  
          */
+        sess.s_errno = errno;  /* XXX TBD modifies netsnmp_transport_open_client API with a promise that errno isthe one returned by connect */
         if (!netsnmp_ds_get_boolean(NETSNMP_DS_APPLICATION_ID,
                                     NETSNMP_DS_AGENT_NO_CONNECTION_WARNINGS)) {
             char buf[1024];
