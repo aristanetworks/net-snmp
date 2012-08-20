@@ -813,7 +813,7 @@ subagent_open_master_session(void)
                                       NETSNMP_DS_AGENT_X_SOCKET);
             snprintf(buf, sizeof(buf), "Warning: "
                      "Failed to connect to the agentx master agent (%s)",
-                     socket ? socket : "[NIL]");
+                     socket ? socket : "[default]");
             if (!netsnmp_ds_get_boolean(NETSNMP_DS_APPLICATION_ID,
                                         NETSNMP_DS_AGENT_NO_ROOT_ACCESS)) {
                 netsnmp_sess_log_error(LOG_WARNING, buf, &sess);
