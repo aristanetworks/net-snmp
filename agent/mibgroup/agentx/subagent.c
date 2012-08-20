@@ -320,6 +320,10 @@ handle_agentx_packet(int operation, netsnmp_session * session, int reqid,
              */
             snmp_alarm_register(period, SA_REPEAT, agentx_reopen_session,
                                 NULL);
+            snmp_log(LOG_INFO, "AgentX master disconnected us, reconnecting in %d\n",
+                  period);
+        } else {
+            snmp_log(LOG_INFO, "AgentX master disconnected us, not reconnecting.\n");
         }
         return 0;
     } else if (operation != NETSNMP_CALLBACK_OP_RECEIVED_MESSAGE) {
