@@ -835,6 +835,9 @@ sub process {
 		$text .= $_;
 	    }
 	    my $res = eval($text);
+            if ($@) {
+              m2c_die "error evaluating perl block: $@\n";
+            }
             if ($res) {
               warn "$@";
               warn "$currentfile:$currentline [$_]\n";
