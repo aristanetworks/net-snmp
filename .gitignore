@@ -108,3 +108,24 @@ win32/*/debug
 win32/*/release
 win32/bin
 win32/lib
+
+#------------------------------------------
+# The following rules are Arista additions.
+#------------------------------------------
+
+# vim swap files
+*.swp
+
+# Autobuild log files, these get all over the place.
+Abuild.*.log
+
+# These files are versioned by Perforce and have to do with the build process,
+# not the code itself.
+configure.default
+net-snmp-git.spec
+
+# a4 make generates this.
+version.m4
+
+# This appears if built directly with make.
+python/build/
