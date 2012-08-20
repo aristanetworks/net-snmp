@@ -482,6 +482,14 @@ get_myaddr(void)
     in_addr_t       addr;
     char           *buf = NULL;
 
+    /*
+     * The code below handles systems with hundreds of interfaces *very*
+     * poorly (see Arista BUG21054).  Since it is only used to fill in
+     * the SNMPv1 agent address, and we don't care very much (if at all)
+     * about SNMPv1, we just fill in 0.
+     */
+    return 0;
+
     if ((sd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
         return 0;
     }
