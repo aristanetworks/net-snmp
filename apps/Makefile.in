@@ -173,7 +173,7 @@ snmptest$(EXEEXT):    snmptest.$(OSUFFIX) $(USELIBS)
 	$(LINK) ${CFLAGS} -o $@ snmptest.$(OSUFFIX) $(LOCAL_LIBS) ${LDFLAGS} ${LIBS} 
 
 snmptrapd$(EXEEXT):    $(TRAPD_OBJECTS) $(USETRAPLIBS) $(INSTALLLIBS)
-	$(LINK) ${CFLAGS} -o $@ $(TRAPD_OBJECTS) $(INSTALLLIBS) $(LOCAL_LIBS) ${LDFLAGS} ${TRAPLIBS}
+	$(LINK) ${CFLAGS} -o $@ -pie $(TRAPD_OBJECTS) $(INSTALLLIBS) $(LOCAL_LIBS) ${LDFLAGS} ${TRAPLIBS}
 
 snmptrap$(EXEEXT):    snmptrap.$(OSUFFIX) $(USELIBS)
 	$(LINK) ${CFLAGS} -o $@ snmptrap.$(OSUFFIX) $(LOCAL_LIBS) ${LDFLAGS} ${LIBS} 
