@@ -788,7 +788,7 @@ snmp_enable_syslog_ident(const char *ident, const int facility)
         enable = 0;
     }
 #else
-    openlog(snmp_log_syslogname(ident), LOG_CONS | LOG_PID, facility);
+    openlog(snmp_log_syslogname(ident), LOG_PID, facility);
 #endif
 
     for (logh = logh_head; logh; logh = logh->next)
@@ -1195,7 +1195,7 @@ log_handler_syslog(  netsnmp_log_handler* logh, int pri, const char *str)
         if (!ident)
             ident = netsnmp_ds_get_string(NETSNMP_DS_LIBRARY_ID,
                                           NETSNMP_DS_LIB_APPTYPE);
-        openlog(ident, LOG_CONS | LOG_PID, facility);
+        openlog(ident, LOG_PID, facility);
         logh->imagic = 1;
     }
     syslog( pri, "%s", str );
