@@ -268,9 +268,9 @@ var_vacm_access(struct variable * vp,
 {
     struct vacm_accessEntry *gp;
     unsigned int    secmodel, seclevel;
-    char            groupName[VACMSTRINGLEN] = { 0 };
-    char            contextPrefix[VACMSTRINGLEN] = { 0 };
-    oid            *op;
+    char            groupName[VACMSTRINGLEN+2] = { 0 };
+    char            contextPrefix[VACMSTRINGLEN+2] = { 0 };
+    oid            *op, *end;
     unsigned long   len, i = 0;
     char           *cp;
     int             cmp;
@@ -365,45 +365,52 @@ var_vacm_access(struct variable * vp,
         secmodel = seclevel = 0;
         groupName[0] = 0;
         contextPrefix[0] = 0;
-        op = name + 11;
-        if (op >= name + *length) {
+        op = name + vp->namelen;
+        end = name + *length;
+        if (op >= end) {
         } else {
-            len = *op;
+            len = *op; /* length is stored in 1st byte of groupName */
             if (len > VACM_MAX_STRING)
                 return NULL;
             cp = groupName;
-            for (i = 0; i <= len; i++) {
+            for (i = 0; i <= len && op < end; i++) {
                 if (*op > 255) {
                     return NULL;   /* illegal value */
                 }
                 *cp++ = (char) *op++;
             }
             *cp = 0;
+            DEBUGMSGTL(("vacm_context", "given group=%s\n",groupName+1));
         }
-        if (op >= name + *length) {
+        if (op >= end) {
         } else {
-            len = *op;
+            len = *op;  /* length is stored in 1st byte of contextPrefix */
             if (len > VACM_MAX_STRING)
                 return NULL;
             cp = contextPrefix;
-            for (i = 0; i <= len; i++) {
+            for (i = 0; i <= len && op < end; i++) {
                 if (*op > 255) {
                     return NULL;   /* illegal value */
                 }
                 *cp++ = (char) *op++;
             }
             *cp = 0;
+            DEBUGMSGTL(("vacm_context", "given context-pref=%s\n",contextPrefix+1));
         }
-        if (op >= name + *length) {
+        if (op >= end) {
         } else {
             secmodel = *op++;
         }
-        if (op >= name + *length) {
+        if (op >= end) {
         } else {
             seclevel = *op++;
         }
         vacm_scanAccessInit();
         while ((gp = vacm_scanAccessNext()) != NULL) {
+            DEBUGMSGTL(("vacm_context", "iterating now: "
+                        "group %s,context %s, security model %d, level %d\n",
+                        gp->groupName+1, gp->contextPrefix+1, gp->securityModel,
+                        gp->securityLevel));
             cmp = strcmp(gp->groupName, groupName);
             if (cmp > 0)
                 break;
