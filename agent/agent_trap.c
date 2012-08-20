@@ -944,7 +944,10 @@ send_trap_to_sess(netsnmp_session * sess, netsnmp_pdu *template_pdu)
     }
 
     if (result == 0) {
-        snmp_sess_perror("snmpd: send_trap", sess);
+        char msg_buf[96];
+        snprintf(msg_buf, sizeof(msg_buf) - 1, "snmpd: send_trap, destination: %s, notificationtype: %s", sess->peername,
+                                            (template_pdu->command == SNMP_MSG_INFORM) ? "inform" : "trap");
+        snmp_sess_perror(msg_buf, sess);
         snmp_free_pdu(pdu);
     } else {
         snmp_increment_statistic(STAT_SNMPOUTTRAPS);
