@@ -295,7 +295,7 @@ for one particular machine.
 .PP
 The default list of directories to search is \fC SYSCONFDIR/snmp\fP,
 followed by \fC DATADIR/snmp\fP,
-followed by \fC LIBDIR/snmp\fP,
+followed by \fC /usr/lib(64)/snmp\fP,
 followed by \fC $HOME/.snmp\fP.
 This list can be changed by setting the environmental variable
 .I SNMPCONFPATH
@@ -365,7 +365,7 @@ function that it should abort the operation of the application.
 SNMPCONFPATH
 A colon separated list of directories to search for configuration
 files in.
-Default: SYSCONFDIR/snmp:DATADIR/snmp:LIBDIR/snmp:$HOME/.snmp
+Default: SYSCONFDIR/snmp:DATADIR/snmp:/usr/lib(64)/snmp:$HOME/.snmp
 .SH "SEE ALSO"
 .BR mib_api "(3), " snmp_api (3)
 .\" Local Variables:

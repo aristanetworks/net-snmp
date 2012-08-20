@@ -1502,7 +1502,7 @@ filename), and call the initialisation routine \fIinit_NAME\fR.
 .RS
 .IP "Note:"
 If the specified PATH is not a fully qualified filename, it will
-be interpreted relative to LIBDIR/snmp/dlmod, and \fC.so\fR
+be interpreted relative to /usr/lib(64)/snmp/dlmod, and \fC.so\fR
 will be appended to the filename.
 .RE
 .PP
