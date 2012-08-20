@@ -1108,6 +1108,22 @@ snmp_synch_response(netsnmp_session * ss,
     return snmp_synch_response_cb(ss, pdu, response, snmp_synch_input);
 }
 
+#include <dlfcn.h>
+
+static
+void *
+_get_snmp_client_callback_fn(char * function_name) {
+    void * f = dlsym(NULL, function_name);
+    if (!f) {
+        fprintf(stderr,
+                "dlsym: error locating callback function \"%s\": %s\n",
+                function_name, dlerror());
+        fflush(stderr);
+        abort();
+    }
+    return f;
+}
+
 int
 snmp_sess_synch_response(void *sessp,
                          netsnmp_pdu *pdu, netsnmp_pdu **response)
@@ -1140,6 +1156,15 @@ snmp_sess_synch_response(void *sessp,
         state->waiting = 1;
 
     while (state->waiting) {
+        char * function_name = getenv("SNMP_CLIENT_CALLBACK_FN");
+        if (function_name) {
+            static void (*client_callback_fn)();
+            if (!client_callback_fn) {
+                client_callback_fn = _get_snmp_client_callback_fn(function_name);
+            }
+            client_callback_fn();
+        }
+
         numfds = 0;
         FD_ZERO(&fdset);
         block = NETSNMP_SNMPBLOCK;
