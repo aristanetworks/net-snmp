@@ -1951,7 +1951,6 @@ netsnmp_getnext(PyObject *self, PyObject *args)
 			 NETSNMP_OID_OUTPUT_NUMERIC);
     }
 
-    val_tuple = PyTuple_New(varlist_len);
     /* initialize return tuple */
     val_tuple = PyTuple_New(varlist_len);
     for (varlist_ind = 0; varlist_ind < varlist_len; varlist_ind++) {
