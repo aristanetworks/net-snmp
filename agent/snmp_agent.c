@@ -3790,6 +3790,29 @@ netsnmp_set_agent_starttime(marker_t s)
     }
 }
 
+/**
+ * Set the monotonic start time. This is useful in situations like 
+ * redundant systems where if one physical device takes
+ * over the software services from another, the 'system start time' doesn't
+ * really change, but the local start time can be changed.
+ */
+void
+netsnmp_set_agent_starttime_monotonic(struct timeval *monotonic)
+{
+    if (monotonic) {
+        struct timeval nowM, nowA, delta;
+
+        starttimeM = *monotonic;
+        netsnmp_get_monotonic_clock(&nowM);
+        NETSNMP_TIMERSUB(&nowM, monotonic, &delta);
+        gettimeofday(&nowA, NULL);
+        NETSNMP_TIMERSUB(&nowA, &delta, &starttime);
+    } else {
+        gettimeofday(&starttime, NULL);
+        netsnmp_get_monotonic_clock(&starttimeM);
+    }
+}
+
 
 /**
  * Return the current value of 'sysUpTime' 

@@ -166,6 +166,18 @@ system_parse_config_sysServices(const char *token, char *cptr)
 }
 
 static void
+system_parse_config_sysstarttime(const char *token, char *cptr)
+{
+    double result;
+    struct timeval tv;
+
+    result = atof(cptr);
+    tv.tv_sec = (__time_t)result;
+    tv.tv_usec = (result - tv.tv_sec) * 1000000;
+    netsnmp_set_agent_starttime_monotonic(&tv);
+}
+
+static void
 system_parse_config_sysObjectID(const char *token, char *cptr)
 {
     size_t sysObjectIDLength = MAX_OID_LEN;
@@ -452,6 +464,9 @@ init_system_mib(void)
     snmpd_register_config_handler("sysobjectid",
                                   system_parse_config_sysObjectID, NULL,
                                   "OID");
+    snmpd_register_config_handler("sysstarttime",
+                                  system_parse_config_sysstarttime, NULL,
+                                  "System start time");
     snmp_register_callback(SNMP_CALLBACK_LIBRARY, SNMP_CALLBACK_STORE_DATA,
                            system_store, NULL);
 }
