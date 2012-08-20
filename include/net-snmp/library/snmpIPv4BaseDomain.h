@@ -31,6 +31,10 @@ extern          "C" {
     int netsnmp_sockaddr_in2(struct sockaddr_in *addr, const char *inpeername,
                              const char *default_target);
 
+   int netsnmp_sockaddr_and_ns_in2(struct sockaddr_in *addr, char *ns,
+                                    const char *inpeername,
+                                    const char *default_target);
+
 #ifdef __cplusplus
 }
 #endif

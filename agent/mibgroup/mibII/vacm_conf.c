@@ -1316,11 +1316,14 @@ vacm_check_view_contents(netsnmp_pdu *pdu, oid * name, size_t namelen,
 
         if (0) {
 #ifdef NETSNMP_TRANSPORT_UDP_DOMAIN
-        } else if (pdu->tDomain == netsnmpUDPDomain
+        } else if (pdu->tDomain == netsnmpUDPDomain ||
+                   pdu->tDomain == netsnmpUDPNSDomain ||
+                   pdu->tDomain == netsnmpTCPNSDomain
 #ifdef NETSNMP_TRANSPORT_TCP_DOMAIN
             || pdu->tDomain == netsnmp_snmpTCPDomain
 #endif
             ) {
+            DEBUGMSGTL(("mibII/vacm_vars", "checking SecName" ));
             if (!netsnmp_udp_getSecName(pdu->transport_data,
                                         pdu->transport_data_length,
                                         pdu_community,
@@ -1372,6 +1375,7 @@ vacm_check_view_contents(netsnmp_pdu *pdu, oid * name, size_t namelen,
             pdu->contextNameLen = strlen(contextName);
 #endif	
         } else {
+            DEBUGMSGTL(("mibII/vacm_vars", "failed checking SecName" ));
             /*
              * Map other <community, transport-address> pairs to security names
              * here.  For now just let non-IPv4 transport always succeed.

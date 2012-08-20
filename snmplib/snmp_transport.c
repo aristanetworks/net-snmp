@@ -99,7 +99,10 @@ oid             netsnmpDDPDomain[] = { 1, 3, 6, 1, 6, 1, 4 };
 size_t          netsnmpDDPDomain_len = OID_LENGTH(netsnmpDDPDomain);
 oid             netsnmpIPXDomain[] = { 1, 3, 6, 1, 6, 1, 5 };
 size_t          netsnmpIPXDomain_len = OID_LENGTH(netsnmpIPXDomain);
-
+oid             netsnmpUDPNSDomain[] = { 1, 3, 6, 1, 4, 1, 30065, 2, 1, 1 };
+size_t          netsnmpUDPNSDomain_len = OID_LENGTH(netsnmpUDPNSDomain);
+oid             netsnmpTCPNSDomain[] = { 1, 3, 6, 1, 4, 1, 30065, 2, 1, 2 };
+size_t          netsnmpTCPNSDomain_len = OID_LENGTH(netsnmpTCPNSDomain);
 
 
 static void     netsnmp_tdomain_dump(void);

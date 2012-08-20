@@ -5,6 +5,7 @@
 
 #include <net-snmp/types.h>
 #include <net-snmp/library/snmpIPv4BaseDomain.h>
+#include <net-snmp/library/snmpSocketNSDomain.h>
 
 #include <stddef.h>
 #include <stdio.h>
@@ -54,13 +55,20 @@ int
 netsnmp_sockaddr_in2(struct sockaddr_in *addr,
                      const char *inpeername, const char *default_target)
 {
+   netsnmp_sockaddr_and_ns_in2( addr, NULL, inpeername, default_target);
+}
+
+int
+netsnmp_sockaddr_and_ns_in2(struct sockaddr_in *addr, char *ns,
+                             const char *inpeername, const char *default_target)
+{
     int ret;
 
     if (addr == NULL) {
         return 0;
     }
 
-    DEBUGMSGTL(("netsnmp_sockaddr_in",
+    DEBUGMSGTL(("netsnmp_sockaddr_and_ns_in2",
                 "addr %p, inpeername \"%s\", default_target \"%s\"\n",
                 addr, inpeername ? inpeername : "[NIL]",
                 default_target ? default_target : "[NIL]"));
@@ -82,6 +90,7 @@ netsnmp_sockaddr_in2(struct sockaddr_in *addr,
 
     if (inpeername != NULL && *inpeername != '\0') {
 	const char     *host, *port;
+	char           *dup = NULL;
 	char           *peername = NULL;
         char           *cp;
         /*
@@ -89,8 +98,39 @@ netsnmp_sockaddr_in2(struct sockaddr_in *addr,
          * it.
          */
 
-        peername = strdup(inpeername);
+        dup = strdup(inpeername);
+        if (dup == NULL) {
+            DEBUGMSGTL(("netsnmp_sockaddr_and_ns_in2", "Empty config\n"));
+            return 0;
+        }
+
+        if (ns) {
+           /*
+            * Try and extract prefix namespace.
+            */
+           cp = strchr(dup, ':');
+           if (cp != NULL) {
+               *cp = '\0';
+               if ( cp - dup > NS_MAX_LENGTH ) {
+                   DEBUGMSGTL(("netsnmp_sockaddr_and_ns_in2", "namespace name is too long\n"));
+                   free(dup);
+                   return 0;
+               }
+               strcpy( ns, dup );
+               peername = cp + 1;
+           } else {
+              DEBUGMSGTL(("netsnmp_sockaddr_and_ns_in2", "namespace or port missing\n"));
+              free(dup);
+              return 0;
+           }
+        }
+        else {
+           peername = dup;
+        }
+
         if (peername == NULL) {
+            DEBUGMSGTL(("netsnmp_sockaddr_and_ns_in2", "PORT missing\n"));
+            free(dup);
             return 0;
         }
 
@@ -117,7 +157,7 @@ netsnmp_sockaddr_in2(struct sockaddr_in *addr,
             long int l;
             char* ep;
 
-            DEBUGMSGTL(("netsnmp_sockaddr_in", "check user service %s\n",
+            DEBUGMSGTL(("netsnmp_sockaddr_and_ns_in2", "check user service %s\n",
                         port));
 
             l = strtol(port, &ep, 10);
@@ -125,15 +165,15 @@ netsnmp_sockaddr_in2(struct sockaddr_in *addr,
                 addr->sin_port = htons((u_short)l);
             else {
                 if (host == NULL) {
-                    DEBUGMSGTL(("netsnmp_sockaddr_in",
+                    DEBUGMSGTL(("netsnmp_sockaddr_and_ns_in2",
                                 "servname not numeric, "
 				"check if it really is a destination)\n"));
                     host = port;
                     port = NULL;
                 } else {
-                    DEBUGMSGTL(("netsnmp_sockaddr_in",
+                    DEBUGMSGTL(("netsnmp_sockaddr_and_ns_in2",
                                 "servname not numeric\n"));
-                    free(peername);
+                    free(dup);
                     return 0;
                 }
             }
@@ -146,7 +186,7 @@ netsnmp_sockaddr_in2(struct sockaddr_in *addr,
             host = NULL;
 
         if (host != NULL) {
-            DEBUGMSGTL(("netsnmp_sockaddr_in",
+            DEBUGMSGTL(("netsnmp_sockaddr_and_ns_in2",
                         "check destination %s\n", host));
 
 
@@ -154,29 +194,29 @@ netsnmp_sockaddr_in2(struct sockaddr_in *addr,
                 /*
                  * The explicit broadcast address hack
                  */
-                DEBUGMSGTL(("netsnmp_sockaddr_in", "Explicit UDP broadcast\n"));
+                DEBUGMSGTL(("netsnmp_sockaddr_and_ns_in2", "Explicit UDP broadcast\n"));
                 addr->sin_addr.s_addr = INADDR_NONE;
             } else {
                 ret =
                     netsnmp_gethostbyname_v4(peername, &addr->sin_addr.s_addr);
                 if (ret < 0) {
-                    DEBUGMSGTL(("netsnmp_sockaddr_in",
+                    DEBUGMSGTL(("netsnmp_sockaddr_and_ns_in2",
                                 "couldn't resolve hostname\n"));
-                    free(peername);
+                    free(dup);
                     return 0;
                 }
-                DEBUGMSGTL(("netsnmp_sockaddr_in",
+                DEBUGMSGTL(("netsnmp_sockaddr_and_ns_in2",
                             "hostname (resolved okay)\n"));
             }
         }
-	free(peername);
+	free(dup);
     }
 
     /*
      * Finished
      */
 
-    DEBUGMSGTL(("netsnmp_sockaddr_in", "return { AF_INET, %s:%hu }\n",
+    DEBUGMSGTL(("netsnmp_sockaddr_and_ns_in2", "return { AF_INET, %s:%hu }\n",
                 inet_ntoa(addr->sin_addr), ntohs(addr->sin_port)));
     return 1;
 }
@@ -220,4 +260,3 @@ netsnmp_ipv4_fmtaddr(const char *prefix, netsnmp_transport *t,
     tmp[sizeof(tmp)-1] = '\0';
     return strdup(tmp);
 }
-

@@ -53,11 +53,15 @@ NETSNMP_IMPORT oid      netsnmpCLNSDomain[];    /*      = { 1, 3, 6, 1, 6, 1, 2 
 NETSNMP_IMPORT oid      netsnmpCONSDomain[];    /*      = { 1, 3, 6, 1, 6, 1, 3 };  */
 NETSNMP_IMPORT oid      netsnmpDDPDomain[]; 	/*      = { 1, 3, 6, 1, 6, 1, 4 };  */
 NETSNMP_IMPORT oid      netsnmpIPXDomain[]; 	/*      = { 1, 3, 6, 1, 6, 1, 5 };  */
+NETSNMP_IMPORT oid      netsnmpUDPNSDomain[]; 	/*      = { 1, 3, 6, 1, 4, 1, 30065, 2, 1, 1 };  */
+NETSNMP_IMPORT oid      netsnmpTCPNSDomain[]; 	/*      = { 1, 3, 6, 1, 4, 1, 30065, 2, 1, 2 };  */
 NETSNMP_IMPORT size_t   netsnmpUDPDomain_len;
 NETSNMP_IMPORT size_t   netsnmpCLNSDomain_len;
 NETSNMP_IMPORT size_t   netsnmpCONSDomain_len;
 NETSNMP_IMPORT size_t   netsnmpDDPDomain_len;
 NETSNMP_IMPORT size_t   netsnmpIPXDomain_len;
+NETSNMP_IMPORT size_t   netsnmpUDPNSDomain_len;
+NETSNMP_IMPORT size_t   netsnmpTCPNSDomain_len;
 
 /* Structure which stores transport security model specific parameters */
 /* isms-secshell-11 section 4.1 */
