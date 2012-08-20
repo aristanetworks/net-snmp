@@ -36,7 +36,7 @@
 *
 */
 void
-divBy10(U64 u64, U64 * pu64Q, unsigned int *puR)
+divBy10(NSU64 u64, NSU64 * pu64Q, unsigned int *puR)
 {
     unsigned long   ulT;
     unsigned long   ulQ;
@@ -91,7 +91,7 @@ divBy10(U64 u64, U64 * pu64Q, unsigned int *puR)
 *
 */
 void
-multBy10(U64 u64, U64 * pu64P)
+multBy10(NSU64 u64, NSU64 * pu64P)
 {
     unsigned long   ulT;
     unsigned long   ulP;
@@ -142,7 +142,7 @@ multBy10(U64 u64, U64 * pu64P)
 *
 */
 void
-incrByU16(U64 * pu64, unsigned int u16)
+incrByU16(NSU64 * pu64, unsigned int u16)
 {
     unsigned long   ulT1;
     unsigned long   ulT2;
@@ -184,7 +184,7 @@ incrByU16(U64 * pu64, unsigned int u16)
 }                               /* incrByV16 */
 
 void
-incrByU32(U64 * pu64, unsigned int u32)
+incrByU32(NSU64 * pu64, unsigned int u32)
 {
     unsigned int    tmp;
     tmp = pu64->low;
@@ -204,7 +204,7 @@ incrByU32(U64 * pu64, unsigned int u32)
  * pu64out = pu64one - pu64two 
  */
 void
-u64Subtract(const U64 * pu64one, const U64 * pu64two, U64 * pu64out)
+u64Subtract(const NSU64 * pu64one, const NSU64 * pu64two, NSU64 * pu64out)
 {
     if (pu64one->low < pu64two->low) {
         pu64out->low = 0xffffffff - pu64two->low + pu64one->low + 1;
@@ -219,7 +219,7 @@ u64Subtract(const U64 * pu64one, const U64 * pu64two, U64 * pu64out)
  * pu64out += pu64one
  */
 void
-u64Incr(U64 * pu64out, const U64 * pu64one)
+u64Incr(NSU64 * pu64out, const NSU64 * pu64one)
 {
     pu64out->high += pu64one->high;
 #if SIZEOF_LONG != 4
@@ -232,9 +232,9 @@ u64Incr(U64 * pu64out, const U64 * pu64one)
  * pu64out += (pu64one - pu64two)
  */
 void
-u64UpdateCounter(U64 * pu64out, const U64 * pu64one, const U64 * pu64two)
+u64UpdateCounter(NSU64 * pu64out, const NSU64 * pu64one, const NSU64 * pu64two)
 {
-    U64 tmp;
+    NSU64 tmp;
     u64Subtract(pu64one, pu64two, &tmp);
     u64Incr(pu64out, &tmp);
 }
@@ -245,7 +245,7 @@ u64UpdateCounter(U64 * pu64out, const U64 * pu64one, const U64 * pu64two)
 netsnmp_feature_child_of(u64copy, netsnmp_unused)
 #ifndef NETSNMP_FEATURE_REMOVE_U64COPY
 void
-u64Copy(U64 * pu64one, const U64 * pu64two)
+u64Copy(NSU64 * pu64one, const NSU64 * pu64two)
 {
     pu64one->high = pu64two->high;
     pu64one->low =  pu64two->low;
@@ -259,7 +259,7 @@ u64Copy(U64 * pu64one, const U64 * pu64two)
 *
 */
 void
-zeroU64(U64 * pu64)
+zeroU64(NSU64 * pu64)
 {
     pu64->low = 0;
     pu64->high = 0;
@@ -273,7 +273,7 @@ zeroU64(U64 * pu64)
 *
 */
 int
-isZeroU64(const U64 * pu64)
+isZeroU64(const NSU64 * pu64)
 {
 
     if ((pu64->low == 0) && (pu64->high == 0))
@@ -440,9 +440,9 @@ netsnmp_c64_check32_and_update(struct counter64 *prev_val, struct counter64 *new
 
 void
 printU64(char *buf,     /* char [I64CHARSZ+1]; */
-                         const U64 * pu64) {
-    U64             u64a;
-    U64             u64b;
+                         const NSU64 * pu64) {
+    NSU64             u64a;
+    NSU64             u64b;
 
     char            aRes[I64CHARSZ + 1];
     unsigned int    u;
@@ -464,9 +464,9 @@ printU64(char *buf,     /* char [I64CHARSZ+1]; */
 
 void
 printI64(char *buf,     /* char [I64CHARSZ+1]; */
-                         const U64 * pu64) {
-    U64             u64a;
-    U64             u64b;
+                         const NSU64 * pu64) {
+    NSU64             u64a;
+    NSU64             u64b;
 
     char            aRes[I64CHARSZ + 1];
     unsigned int    u;
@@ -500,9 +500,9 @@ printI64(char *buf,     /* char [I64CHARSZ+1]; */
 }
 
 int
-read64(U64 * i64, const char *str)
+read64(NSU64 * i64, const char *str)
 {
-    U64             i64p;
+    NSU64             i64p;
     unsigned int    u;
     int             sign = 0;
     int             ok = 0;
@@ -540,8 +540,8 @@ main(int argc, char *argv[])
     int             j;
     int             l;
     unsigned int    u;
-    U64             u64a;
-    U64             u64b;
+    NSU64             u64a;
+    NSU64             u64b;
 #define MXSZ 20
     char            aRes[MXSZ + 1];
 

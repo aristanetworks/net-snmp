@@ -2226,10 +2226,10 @@ read_config_read_memory(int type, char *readfrom,
         return readfrom;
 
     case ASN_COUNTER64:
-        if (*len < sizeof(U64))
+        if (*len < sizeof(NSU64))
             return NULL;
-        *len = sizeof(U64);
-        read64((U64 *) dataptr, readfrom);
+        *len = sizeof(NSU64);
+        read64((NSU64 *) dataptr, readfrom);
         readfrom = skip_token(readfrom);
         return readfrom;
     }

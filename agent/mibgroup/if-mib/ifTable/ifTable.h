@@ -198,35 +198,35 @@ config_exclude(mibII/interfaces)
          */
 
         /*
-         * ifHCInOctets(6)/COUNTER64/ASN_COUNTER64/U64(U64)//l/A/w/e/r/d/h
+         * ifHCInOctets(6)/COUNTER64/ASN_COUNTER64/NSU64(U64)//l/A/w/e/r/d/h
          */
 
         /*
-         * ifHCInUcastPkts(7)/COUNTER64/ASN_COUNTER64/U64(U64)//l/A/w/e/r/d/h
+         * ifHCInUcastPkts(7)/COUNTER64/ASN_COUNTER64/NSU64(U64)//l/A/w/e/r/d/h
          */
 
         /*
-         * ifHCInMulticastPkts(8)/COUNTER64/ASN_COUNTER64/U64(U64)//l/A/w/e/r/d/h
+         * ifHCInMulticastPkts(8)/COUNTER64/ASN_COUNTER64/NSU64(U64)//l/A/w/e/r/d/h
          */
 
         /*
-         * ifHCInBroadcastPkts(9)/COUNTER64/ASN_COUNTER64/U64(U64)//l/A/w/e/r/d/h
+         * ifHCInBroadcastPkts(9)/COUNTER64/ASN_COUNTER64/NSU64(U64)//l/A/w/e/r/d/h
          */
 
         /*
-         * ifHCOutOctets(10)/COUNTER64/ASN_COUNTER64/U64(U64)//l/A/w/e/r/d/h
+         * ifHCOutOctets(10)/COUNTER64/ASN_COUNTER64/NSU64(U64)//l/A/w/e/r/d/h
          */
 
         /*
-         * ifHCOutUcastPkts(11)/COUNTER64/ASN_COUNTER64/U64(U64)//l/A/w/e/r/d/h
+         * ifHCOutUcastPkts(11)/COUNTER64/ASN_COUNTER64/NSU64(U64)//l/A/w/e/r/d/h
          */
 
         /*
-         * ifHCOutMulticastPkts(12)/COUNTER64/ASN_COUNTER64/U64(U64)//l/A/w/e/r/d/h
+         * ifHCOutMulticastPkts(12)/COUNTER64/ASN_COUNTER64/NSU64(U64)//l/A/w/e/r/d/h
          */
 
         /*
-         * ifHCOutBroadcastPkts(13)/COUNTER64/ASN_COUNTER64/U64(U64)//l/A/w/e/r/d/h
+         * ifHCOutBroadcastPkts(13)/COUNTER64/ASN_COUNTER64/NSU64(U64)//l/A/w/e/r/d/h
          */
 
         /*

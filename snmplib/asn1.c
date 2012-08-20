@@ -1858,7 +1858,7 @@ asn_parse_unsigned_int64(u_char * data,
         ((*(bufp + 1) == ASN_OPAQUE_COUNTER64) ||
          (*(bufp + 1) == ASN_OPAQUE_U64))) {
         /*
-         * change type to Counter64 or U64 
+         * change type to Counter64 or NSU64 
          */
         *type = *(bufp + 1);
         /*
@@ -3435,7 +3435,7 @@ asn_realloc_rbuild_unsigned_int64(u_char ** pkt, size_t * pkt_len,
 #endif                          /* NETSNMP_WITH_OPAQUE_SPECIAL_TYPES */
 
     DEBUGDUMPSETUP("send", (*pkt + *pkt_len - *offset), intsize);
-    DEBUGMSG(("dumpv_send", "  U64:\t%lu %lu\n", cp->high, cp->low));
+    DEBUGMSG(("dumpv_send", "  NSU64:\t%lu %lu\n", cp->high, cp->low));
     return 1;
 }
 

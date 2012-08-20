@@ -726,75 +726,75 @@ _ifXTable_get_column(ifXTable_rowreq_ctx * rowreq_ctx,
         break;
 
         /*
-         * ifHCInOctets(6)/COUNTER64/ASN_COUNTER64/U64(U64)//l/A/w/e/r/d/h 
+         * ifHCInOctets(6)/COUNTER64/ASN_COUNTER64/NSU64(U64)//l/A/w/e/r/d/h 
          */
     case COLUMN_IFHCINOCTETS:
-        var->val_len = sizeof(U64);
+        var->val_len = sizeof(NSU64);
         var->type = ASN_COUNTER64;
-        rc = ifHCInOctets_get(rowreq_ctx, (U64 *) var->val.string);
+        rc = ifHCInOctets_get(rowreq_ctx, (NSU64 *) var->val.string);
         break;
 
         /*
-         * ifHCInUcastPkts(7)/COUNTER64/ASN_COUNTER64/U64(U64)//l/A/w/e/r/d/h 
+         * ifHCInUcastPkts(7)/COUNTER64/ASN_COUNTER64/NSU64(U64)//l/A/w/e/r/d/h 
          */
     case COLUMN_IFHCINUCASTPKTS:
-        var->val_len = sizeof(U64);
+        var->val_len = sizeof(NSU64);
         var->type = ASN_COUNTER64;
-        rc = ifHCInUcastPkts_get(rowreq_ctx, (U64 *) var->val.string);
+        rc = ifHCInUcastPkts_get(rowreq_ctx, (NSU64 *) var->val.string);
         break;
 
         /*
-         * ifHCInMulticastPkts(8)/COUNTER64/ASN_COUNTER64/U64(U64)//l/A/w/e/r/d/h 
+         * ifHCInMulticastPkts(8)/COUNTER64/ASN_COUNTER64/NSU64(U64)//l/A/w/e/r/d/h 
          */
     case COLUMN_IFHCINMULTICASTPKTS:
-        var->val_len = sizeof(U64);
+        var->val_len = sizeof(NSU64);
         var->type = ASN_COUNTER64;
-        rc = ifHCInMulticastPkts_get(rowreq_ctx, (U64 *) var->val.string);
+        rc = ifHCInMulticastPkts_get(rowreq_ctx, (NSU64 *) var->val.string);
         break;
 
         /*
-         * ifHCInBroadcastPkts(9)/COUNTER64/ASN_COUNTER64/U64(U64)//l/A/w/e/r/d/h 
+         * ifHCInBroadcastPkts(9)/COUNTER64/ASN_COUNTER64/NSU64(U64)//l/A/w/e/r/d/h 
          */
     case COLUMN_IFHCINBROADCASTPKTS:
-        var->val_len = sizeof(U64);
+        var->val_len = sizeof(NSU64);
         var->type = ASN_COUNTER64;
-        rc = ifHCInBroadcastPkts_get(rowreq_ctx, (U64 *) var->val.string);
+        rc = ifHCInBroadcastPkts_get(rowreq_ctx, (NSU64 *) var->val.string);
         break;
 
         /*
-         * ifHCOutOctets(10)/COUNTER64/ASN_COUNTER64/U64(U64)//l/A/w/e/r/d/h 
+         * ifHCOutOctets(10)/COUNTER64/ASN_COUNTER64/NSU64(U64)//l/A/w/e/r/d/h 
          */
     case COLUMN_IFHCOUTOCTETS:
-        var->val_len = sizeof(U64);
+        var->val_len = sizeof(NSU64);
         var->type = ASN_COUNTER64;
-        rc = ifHCOutOctets_get(rowreq_ctx, (U64 *) var->val.string);
+        rc = ifHCOutOctets_get(rowreq_ctx, (NSU64 *) var->val.string);
         break;
 
         /*
-         * ifHCOutUcastPkts(11)/COUNTER64/ASN_COUNTER64/U64(U64)//l/A/w/e/r/d/h 
+         * ifHCOutUcastPkts(11)/COUNTER64/ASN_COUNTER64/NSU64(U64)//l/A/w/e/r/d/h 
          */
     case COLUMN_IFHCOUTUCASTPKTS:
-        var->val_len = sizeof(U64);
+        var->val_len = sizeof(NSU64);
         var->type = ASN_COUNTER64;
-        rc = ifHCOutUcastPkts_get(rowreq_ctx, (U64 *) var->val.string);
+        rc = ifHCOutUcastPkts_get(rowreq_ctx, (NSU64 *) var->val.string);
         break;
 
         /*
-         * ifHCOutMulticastPkts(12)/COUNTER64/ASN_COUNTER64/U64(U64)//l/A/w/e/r/d/h 
+         * ifHCOutMulticastPkts(12)/COUNTER64/ASN_COUNTER64/NSU64(U64)//l/A/w/e/r/d/h 
          */
     case COLUMN_IFHCOUTMULTICASTPKTS:
-        var->val_len = sizeof(U64);
+        var->val_len = sizeof(NSU64);
         var->type = ASN_COUNTER64;
-        rc = ifHCOutMulticastPkts_get(rowreq_ctx, (U64 *) var->val.string);
+        rc = ifHCOutMulticastPkts_get(rowreq_ctx, (NSU64 *) var->val.string);
         break;
 
         /*
-         * ifHCOutBroadcastPkts(13)/COUNTER64/ASN_COUNTER64/U64(U64)//l/A/w/e/r/d/h 
+         * ifHCOutBroadcastPkts(13)/COUNTER64/ASN_COUNTER64/NSU64(U64)//l/A/w/e/r/d/h 
          */
     case COLUMN_IFHCOUTBROADCASTPKTS:
-        var->val_len = sizeof(U64);
+        var->val_len = sizeof(NSU64);
         var->type = ASN_COUNTER64;
-        rc = ifHCOutBroadcastPkts_get(rowreq_ctx, (U64 *) var->val.string);
+        rc = ifHCOutBroadcastPkts_get(rowreq_ctx, (NSU64 *) var->val.string);
         break;
 
         /*
@@ -1001,56 +1001,56 @@ _ifXTable_check_column(ifXTable_rowreq_ctx * rowreq_ctx,
         break;
 
         /*
-         * ifHCInOctets(6)/COUNTER64/ASN_COUNTER64/U64(U64)//l/A/w/e/r/d/h 
+         * ifHCInOctets(6)/COUNTER64/ASN_COUNTER64/NSU64(U64)//l/A/w/e/r/d/h 
          */
     case COLUMN_IFHCINOCTETS:
         rc = SNMP_ERR_NOTWRITABLE;
         break;
 
         /*
-         * ifHCInUcastPkts(7)/COUNTER64/ASN_COUNTER64/U64(U64)//l/A/w/e/r/d/h 
+         * ifHCInUcastPkts(7)/COUNTER64/ASN_COUNTER64/NSU64(U64)//l/A/w/e/r/d/h 
          */
     case COLUMN_IFHCINUCASTPKTS:
         rc = SNMP_ERR_NOTWRITABLE;
         break;
 
         /*
-         * ifHCInMulticastPkts(8)/COUNTER64/ASN_COUNTER64/U64(U64)//l/A/w/e/r/d/h 
+         * ifHCInMulticastPkts(8)/COUNTER64/ASN_COUNTER64/NSU64(U64)//l/A/w/e/r/d/h 
          */
     case COLUMN_IFHCINMULTICASTPKTS:
         rc = SNMP_ERR_NOTWRITABLE;
         break;
 
         /*
-         * ifHCInBroadcastPkts(9)/COUNTER64/ASN_COUNTER64/U64(U64)//l/A/w/e/r/d/h 
+         * ifHCInBroadcastPkts(9)/COUNTER64/ASN_COUNTER64/NSU64(U64)//l/A/w/e/r/d/h 
          */
     case COLUMN_IFHCINBROADCASTPKTS:
         rc = SNMP_ERR_NOTWRITABLE;
         break;
 
         /*
-         * ifHCOutOctets(10)/COUNTER64/ASN_COUNTER64/U64(U64)//l/A/w/e/r/d/h 
+         * ifHCOutOctets(10)/COUNTER64/ASN_COUNTER64/NSU64(U64)//l/A/w/e/r/d/h 
          */
     case COLUMN_IFHCOUTOCTETS:
         rc = SNMP_ERR_NOTWRITABLE;
         break;
 
         /*
-         * ifHCOutUcastPkts(11)/COUNTER64/ASN_COUNTER64/U64(U64)//l/A/w/e/r/d/h 
+         * ifHCOutUcastPkts(11)/COUNTER64/ASN_COUNTER64/NSU64(U64)//l/A/w/e/r/d/h 
          */
     case COLUMN_IFHCOUTUCASTPKTS:
         rc = SNMP_ERR_NOTWRITABLE;
         break;
 
         /*
-         * ifHCOutMulticastPkts(12)/COUNTER64/ASN_COUNTER64/U64(U64)//l/A/w/e/r/d/h 
+         * ifHCOutMulticastPkts(12)/COUNTER64/ASN_COUNTER64/NSU64(U64)//l/A/w/e/r/d/h 
          */
     case COLUMN_IFHCOUTMULTICASTPKTS:
         rc = SNMP_ERR_NOTWRITABLE;
         break;
 
         /*
-         * ifHCOutBroadcastPkts(13)/COUNTER64/ASN_COUNTER64/U64(U64)//l/A/w/e/r/d/h 
+         * ifHCOutBroadcastPkts(13)/COUNTER64/ASN_COUNTER64/NSU64(U64)//l/A/w/e/r/d/h 
          */
     case COLUMN_IFHCOUTBROADCASTPKTS:
         rc = SNMP_ERR_NOTWRITABLE;

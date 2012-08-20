@@ -58,45 +58,45 @@ typedef struct netsnmp_ipstats_s {
     * other columns, when underlying OS does not provide them.
     * Always fill at least 32 bits, the table is periodically polled -> 32 bit
     * overflow shall be detected and 64 bit value should be computed automatically. */
-   U64             HCInReceives;
-   U64             HCInOctets;
+   NSU64             HCInReceives;
+   NSU64             HCInOctets;
    u_long          InHdrErrors;
-   U64             HCInNoRoutes; 
+   NSU64             HCInNoRoutes; 
    u_long          InAddrErrors;
    u_long          InUnknownProtos;
    u_long          InTruncatedPkts;
    
    /* optional, can be computed from HCInNoRoutes and HCOutForwDatagrams */
-   U64             HCInForwDatagrams; 
+   NSU64             HCInForwDatagrams; 
    
    u_long          ReasmReqds;
    u_long          ReasmOKs;
    u_long          ReasmFails;
    u_long          InDiscards;
-   U64             HCInDelivers;
-   U64             HCOutRequests;
-   U64             HCOutNoRoutes;
-   U64             HCOutForwDatagrams;
-   U64             HCOutDiscards;
+   NSU64             HCInDelivers;
+   NSU64             HCOutRequests;
+   NSU64             HCOutNoRoutes;
+   NSU64             HCOutForwDatagrams;
+   NSU64             HCOutDiscards;
    
    /* optional, can be computed from HCOutFragOKs + HCOutFragFails*/
-   U64             HCOutFragReqds;
-   U64             HCOutFragOKs;
-   U64             HCOutFragFails;
-   U64             HCOutFragCreates;
+   NSU64             HCOutFragReqds;
+   NSU64             HCOutFragOKs;
+   NSU64             HCOutFragFails;
+   NSU64             HCOutFragCreates;
    
    /* optional, can be computed from 
     * HCOutRequests +HCOutForwDatagrams + HCOutFragCreates
     * - HCOutFragReqds - HCOutNoRoutes  - HCOutDiscards */
-   U64             HCOutTransmits;
+   NSU64             HCOutTransmits;
    
-   U64             HCOutOctets;
-   U64             HCInMcastPkts;
-   U64             HCInMcastOctets;
-   U64             HCOutMcastPkts;
-   U64             HCOutMcastOctets;
-   U64             HCInBcastPkts;
-   U64             HCOutBcastPkts;
+   NSU64             HCOutOctets;
+   NSU64             HCInMcastPkts;
+   NSU64             HCInMcastOctets;
+   NSU64             HCOutMcastPkts;
+   NSU64             HCOutMcastOctets;
+   NSU64             HCInBcastPkts;
+   NSU64             HCOutBcastPkts;
 
    /* Array of available columns.*/
    int             columnAvail[IPSYSTEMSTATSTABLE_LAST+1];
