@@ -793,7 +793,7 @@ netsnmp_send_traps(int trap, int specific,
            /* "v1trapaddress" was specified in config, try to resolve it */
            res = netsnmp_gethostbyname_v4(v1trapaddress, pdu_in_addr_t);
        }
-       if (v1trapaddress == NULL || res < 0) {
+       if (v1trapaddress == NULL || res < 0 || *pdu_in_addr_t == INADDR_ANY) {
            /* "v1trapaddress" was not specified in config or the resolution failed,
             * try any local address */
            *pdu_in_addr_t = get_myaddr();
