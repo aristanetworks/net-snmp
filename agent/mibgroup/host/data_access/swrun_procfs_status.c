@@ -189,21 +189,18 @@ netsnmp_arch_swrun_container_load( netsnmp_container *container, u_int flags)
         default:   entry->hrSWRunStatus = HRSWRUNSTATUS_INVALID;
                    break;
         }
-        for (i=10; i; i--) {   /* Skip STATUS + 10 fields */
+        for (i=11; i; i--) {   /* Skip STATUS + 10 fields */
             while (' ' != *(cp++))
                 ;
-            cp++;
         }
         entry->hrSWRunPerfCPU  = atoi( cp );   /*  utime */
-        while ( ' ' != *(cp++))
+        while ( ' ' != *(cp++))		       /* Skip utime */
             ;
-        cp++;				   /* Skip utime */
         entry->hrSWRunPerfCPU += atoi( cp );   /* +stime */
 
-        for (i=8; i; i--) {   /* Skip stime + 8 fields */
+        for (i=9; i; i--) {   /* Skip stime + 8 fields */
             while (' ' != *(cp++))
                 ;
-            cp++;
         }
         entry->hrSWRunPerfMem  = atoi( cp );   /*  rss */
         entry->hrSWRunPerfMem *= (getpagesize()/1024);  /* in kB */
