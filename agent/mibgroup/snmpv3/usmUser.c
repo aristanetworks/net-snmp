@@ -338,7 +338,9 @@ var_usmUser(struct variable * vp,
             /*
              * need to fail if not exact 
              */
-            uptr = usm_get_userList();
+            if (!exact) {
+                uptr = usm_get_userList();
+            }
 
         } else {
             for (nptr = usm_get_userList(), uptr = NULL;
