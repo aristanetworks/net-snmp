@@ -1182,7 +1182,7 @@ _sess_copy(netsnmp_session * in_session)
     if (session->retries == SNMP_DEFAULT_RETRIES) {
         int retry = netsnmp_ds_get_int(NETSNMP_DS_LIBRARY_ID,
                                        NETSNMP_DS_LIB_RETRIES);
-        if (retry < 0)
+        if (retry <= 0)
             session->retries = DEFAULT_RETRIES;
         else
             session->retries = retry;
