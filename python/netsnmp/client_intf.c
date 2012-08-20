@@ -1122,8 +1122,10 @@ py_netsnmp_attr_string(PyObject *obj, char * attr_name, char **val,
   if (obj && attr_name && PyObject_HasAttrString(obj, attr_name)) {
     PyObject *attr = PyObject_GetAttrString(obj, attr_name);
     if (attr) {
-      int retval;
-      retval = PyString_AsStringAndSize(attr, val, len);
+      int retval = -1;
+      if (PyString_Check( attr )) {
+        retval = PyString_AsStringAndSize(attr, val, len);
+      }
       Py_DECREF(attr);
       return retval;
     }
