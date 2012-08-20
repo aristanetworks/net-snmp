@@ -4,6 +4,8 @@ import re
 import types
 from sys import stderr
 
+from client_intf import read_module, read_mib
+
 # control verbosity of error output
 verbose = 1
 

@@ -2687,6 +2687,32 @@ netsnmp_set(PyObject *self, PyObject *args)
   return (ret ? ret : Py_BuildValue(""));
 }
 
+static PyObject *
+pynetsnmp_read_module(PyObject *self, PyObject *args) {
+  const char *name;
+
+  if (!PyArg_ParseTuple(args, "s:read_module", &name))
+    return NULL;
+
+  __libraries_init("python");
+
+  (void) read_module(name);
+  Py_RETURN_NONE;
+}
+
+static PyObject *
+pynetsnmp_read_mib(PyObject *self, PyObject *args) {
+  const char *filename;
+
+  if (!PyArg_ParseTuple(args, "s:read_mib", &filename))
+    return NULL;
+
+  __libraries_init("python");
+
+  (void) read_mib(filename);
+  Py_RETURN_NONE;
+}
+
 
 static PyMethodDef ClientMethods[] = {
   {"session",  netsnmp_create_session, METH_VARARGS,
@@ -2707,6 +2733,10 @@ static PyMethodDef ClientMethods[] = {
    "perform an SNMP SET operation."},
   {"walk",  netsnmp_walk, METH_VARARGS,
    "perform an SNMP WALK operation."},
+  {"read_module",  pynetsnmp_read_module, METH_VARARGS,
+   "load the specified MIB module."},
+  {"read_mib",  pynetsnmp_read_mib, METH_VARARGS,
+   "load the specified MIB file."},
   {NULL, NULL, 0, NULL}        /* Sentinel */
 };
 

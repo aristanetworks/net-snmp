@@ -4975,6 +4975,7 @@ read_mib(const char *filename)
 {
     FILE           *fp;
     char            token[MAXTOKEN];
+    const char     *oldFile = File;
 
     fp = fopen(filename, "r");
     if (fp == NULL) {
@@ -4988,6 +4989,7 @@ read_mib(const char *filename)
     fclose(fp);
     new_module(token, filename);
     (void) netsnmp_read_module(token);
+    File = oldFile;
 
     return tree_head;
 }
