@@ -63,7 +63,7 @@ class Varbind(object):
                 (self.tag, self.iid) = match.group(1,2)
 
     def __setattr__(self, name, val):
-        self.__dict__[name] = STR(val)
+        self.__dict__[name] = val
 
     def print_str(self):
         return self.tag, self.iid, self.val, self.type

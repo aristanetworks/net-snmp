@@ -73,9 +73,6 @@ static int __is_numeric_oid (char*);
 static int __is_leaf (struct tree*);
 static int __translate_appl_type (char*);
 static int __translate_asn_type (int);
-static int __snprint_value (char *, size_t,
-                              netsnmp_variable_list*, struct tree *,
-                             int, int);
 static int __sprint_num_objid (char *, oid *, int);
 static int __scan_num_objid (char *, oid *, size_t *);
 static int __get_type_str (int, char *);
@@ -308,125 +305,134 @@ int type;
         }
 }
 
-#define USE_BASIC 0
-#define USE_ENUMS 1
-#define USE_SPRINT_VALUE 2
-static int
-__snprint_value (buf, buf_len, var, tp, type, flag)
-char * buf;
-size_t buf_len;
-netsnmp_variable_list * var;
-struct tree * tp;
-int type;
-int flag;
+static PyObject *
+enumvalue_to_pyobject(int val, struct tree * tp) {
+   struct enum_list *ep;
+   for (ep = tp->enums; ep; ep = ep->next) {
+      if (ep->value == val) {
+         PyObject *obj = PyString_FromString(ep->label);
+         return obj;
+      }
+   }
+   PyObject *obj = PyInt_FromLong(val);
+   return obj;
+}
+
+static PyObject *
+value_to_pyobject(char * buf, size_t buf_len, netsnmp_variable_list * var,
+                  struct tree * tp, int type)
 {
-   int len = 0;
    u_char* ip;
    struct enum_list *ep;
+   PyObject *obj = NULL;
+   u_char *cp;
+   int len;
+   int bit;
 
-
-   buf[0] = '\0';
-   if (flag == USE_SPRINT_VALUE) {
-	snprint_value(buf, buf_len, var->name, var->name_length, var);
-	len = STRLEN(buf);
-   } else {
-     switch (var->type) {
-        case ASN_INTEGER:
-           if (flag == USE_ENUMS) {
-              for(ep = tp->enums; ep; ep = ep->next) {
-                 if (ep->value == *var->val.integer) {
-                    strncpy(buf, ep->label, buf_len);
-                    buf[buf_len -1] = 0;
-                    len = STRLEN(buf);
-                    break;
-                 }
-              }
-           }
-           if (!len) {
-              snprintf(buf, buf_len, "%ld", *var->val.integer);
-              len = STRLEN(buf);
-           }
-           break;
-
-        case ASN_GAUGE:
-        case ASN_COUNTER:
-        case ASN_TIMETICKS:
-        case ASN_UINTEGER:
-           snprintf(buf, buf_len, "%lu", (unsigned long) *var->val.integer);
-           len = STRLEN(buf);
-           break;
-
-        case ASN_OCTET_STR:
-        case ASN_OPAQUE:
-           len = var->val_len;
-           if (len > buf_len)
-               len = buf_len;
-           memcpy(buf, (char*)var->val.string, len);
-           break;
-
-        case ASN_IPADDRESS:
-          ip = (u_char*)var->val.string;
-          snprintf(buf, buf_len, "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
-          len = STRLEN(buf);
-          break;
-
-        case ASN_NULL:
-           break;
-
-        case ASN_OBJECT_ID:
-          __sprint_num_objid(buf, (oid *)(var->val.objid),
-                             var->val_len/sizeof(oid));
-          len = STRLEN(buf);
-          break;
-
-	case SNMP_ENDOFMIBVIEW:
-          snprintf(buf, buf_len, "%s", "ENDOFMIBVIEW");
-	  break;
-	case SNMP_NOSUCHOBJECT:
-	  snprintf(buf, buf_len, "%s", "NOSUCHOBJECT");
-	  break;
-	case SNMP_NOSUCHINSTANCE:
-	  snprintf(buf, buf_len, "%s", "NOSUCHINSTANCE");
-	  break;
-
-        case ASN_COUNTER64:
-#ifdef OPAQUE_SPECIAL_TYPES
-        case ASN_OPAQUE_COUNTER64:
-        case ASN_OPAQUE_U64:
-#endif
-          printU64(buf,(struct counter64 *)var->val.counter64);
-          len = STRLEN(buf);
-          break;
-
-#ifdef OPAQUE_SPECIAL_TYPES
-        case ASN_OPAQUE_I64:
-          printI64(buf,(struct counter64 *)var->val.counter64);
-          len = STRLEN(buf);
-          break;
-#endif
-
-        case ASN_BIT_STR:
-            snprint_bitstring(buf, buf_len, var, NULL, NULL, NULL);
-            len = STRLEN(buf);
-            break;
-#ifdef OPAQUE_SPECIAL_TYPES
-        case ASN_OPAQUE_FLOAT:
-	  if (var->val.floatVal)
-	    snprintf(buf, buf_len, "%f", *var->val.floatVal);
+   switch (var->type) {
+      case ASN_INTEGER:
+         obj = enumvalue_to_pyobject(*var->val.integer, tp);
          break;
-         
-        case ASN_OPAQUE_DOUBLE:
-	  if (var->val.doubleVal)
-	    snprintf(buf, buf_len, "%f", *var->val.doubleVal);
+
+      case ASN_GAUGE:
+      case ASN_COUNTER:
+      case ASN_TIMETICKS:
+      case ASN_UINTEGER:
+         obj = PyLong_FromUnsignedLong(*var->val.integer);
+         break;
+
+      case ASN_OCTET_STR:
+      case ASN_OPAQUE:
+         if (type == TYPE_BITSTRING) {
+            obj = PyList_New(0);
+            cp = var->val.bitstring;
+            for (len = 0; len < (int) var->val_len; len++) {
+               for (bit = 0; bit < 8; bit++) {
+                  if (*cp & (0x80 >> bit)) {
+                     PyObject *val = enumvalue_to_pyobject((len * 8) + bit, tp);
+                     PyList_Append(obj, val);
+                     Py_DECREF(val);
+                  }
+               }
+               cp++;
+            }
+         } else {
+            obj = PyString_FromStringAndSize(var->val.string, var->val_len);
+         }
+         break;
+
+      case ASN_IPADDRESS:
+         ip = (u_char*)var->val.string;
+         snprintf(buf, buf_len, "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+         obj = PyString_FromString(buf);
+         break;
+
+      case ASN_NULL:
+         obj = Py_None;
+         Py_INCREF(obj);
+         break;
+
+      case ASN_OBJECT_ID:
+        __sprint_num_objid(buf, (oid *)(var->val.objid),
+                           var->val_len/sizeof(oid));
+        obj = PyString_FromString(buf);
+        break;
+
+      case SNMP_ENDOFMIBVIEW:
+      case SNMP_NOSUCHOBJECT:
+      case SNMP_NOSUCHINSTANCE:
+         obj = Py_None;
+         Py_INCREF(obj);
+         break;
+
+      case ASN_COUNTER64:
+#ifdef OPAQUE_SPECIAL_TYPES
+      case ASN_OPAQUE_COUNTER64:
+      case ASN_OPAQUE_U64:
+#endif
+         printU64(buf, (struct counter64 *)var->val.counter64);
+         obj = PyLong_FromString(buf, NULL, 10);
+         break;
+
+#ifdef OPAQUE_SPECIAL_TYPES
+      case ASN_OPAQUE_I64:
+         printI64(buf, (struct counter64 *)var->val.counter64);
+         obj = PyLong_FromString(buf, NULL, 10);
          break;
 #endif
-         
-        case ASN_NSAP:
-        default:
-	  fprintf(stderr,"snprint_value: asn type not handled %d\n",var->type);
-     }
+
+      case ASN_BIT_STR:
+         snprint_bitstring(buf, buf_len, var, NULL, NULL, NULL);
+         obj = PyString_FromString(buf);
+         break;
+
+#ifdef OPAQUE_SPECIAL_TYPES
+      case ASN_OPAQUE_FLOAT:
+         if (var->val.floatVal) {
+            obj = PyFloat_FromDouble(*var->val.floatVal);
+         } else {
+            PyErr_SetString(PyExc_ValueError,
+                            "Failed to convert ASN_OPAQUE_FLOAT value");
+         }
+         break;
+
+      case ASN_OPAQUE_DOUBLE:
+         if (var->val.doubleVal) {
+            obj = PyFloat_FromDouble(*var->val.doubleVal);
+         } else {
+            PyErr_SetString(PyExc_ValueError,
+                            "Failed to convert ASN_OPAQUE_DOUBLE value");
+         }
+         break;
+#endif
+
+      case ASN_NSAP:
+      default:
+         PyErr_SetString(PyExc_ValueError, "Unknown ASN type");
+         break;
    }
-   return(len);
+
+   return obj;
 }
 
 static int
@@ -1234,6 +1240,16 @@ __py_netsnmp_update_session_errors(PyObject *session, char *err_str,
     Py_DECREF(tmp_for_conversion);
 }
 
+static int
+py_netsnmp_attr_set_pyobject(PyObject *obj, char *attr_name, PyObject *val)
+{
+  int ret = -1;
+  if (obj && attr_name) {
+    ret = PyObject_SetAttrString(obj, attr_name, val);
+  }
+  return ret;
+}
+
 static PyObject *
 netsnmp_create_session(PyObject *self, PyObject *args)
 {
@@ -1560,7 +1576,6 @@ netsnmp_get(PyObject *self, PyObject *args)
   netsnmp_pdu *pdu, *response;
   netsnmp_variable_list *vars;
   struct tree *tp;
-  int len;
   oid *oid_arr;
   int oid_arr_len = MAX_OID_LEN;
   int type;
@@ -1573,7 +1588,6 @@ netsnmp_get(PyObject *self, PyObject *args)
   char *tag;
   char *iid;
   int getlabel_flag = NO_FLAGS;
-  int sprintval_flag = USE_BASIC;
   int verbose = py_netsnmp_verbose();
   int old_format;
   int best_guess;
@@ -1602,10 +1616,6 @@ netsnmp_get(PyObject *self, PyObject *args)
       getlabel_flag |= USE_LONG_NAMES;
     if (py_netsnmp_attr_long(session, "UseNumeric"))
       getlabel_flag |= USE_NUMERIC_OIDS;
-    if (py_netsnmp_attr_long(session, "UseEnums"))
-      sprintval_flag = USE_ENUMS;
-    if (py_netsnmp_attr_long(session, "UseSprintValue"))
-      sprintval_flag = USE_SPRINT_VALUE;	
     best_guess = py_netsnmp_attr_long(session, "BestGuess");
     retry_nosuch = py_netsnmp_attr_long(session, "RetryNoSuch");
       
@@ -1727,15 +1737,12 @@ netsnmp_get(PyObject *self, PyObject *args)
 	py_netsnmp_attr_set_string(varbind, "type", type_str, 
 				   STRLEN(type_str));
 
-	len = __snprint_value(str_buf,sizeof(str_buf),
-			    vars,tp,type,sprintval_flag);
-	str_buf[len] = '\0';
-	py_netsnmp_attr_set_string(varbind, "val", str_buf, len);
+	PyObject *obj = value_to_pyobject(str_buf, sizeof(str_buf), vars, tp, type);
+	py_netsnmp_attr_set_pyobject(varbind, "val", obj);
 
 	/* save in return tuple as well */
-	PyTuple_SetItem(val_tuple, varlist_ind, 
-			(len ? Py_BuildValue("s#", str_buf, len) :
-			 Py_BuildValue("")));
+	Py_INCREF(obj);
+	PyTuple_SetItem(val_tuple, varlist_ind, obj);
 
 	Py_DECREF(varbind);
       } else {
@@ -1769,7 +1776,6 @@ netsnmp_getnext(PyObject *self, PyObject *args)
   netsnmp_pdu *pdu, *response;
   netsnmp_variable_list *vars;
   struct tree *tp;
-  int len;
   oid *oid_arr;
   int oid_arr_len = MAX_OID_LEN;
   int type;
@@ -1782,7 +1788,6 @@ netsnmp_getnext(PyObject *self, PyObject *args)
   char *tag;
   char *iid;
   int getlabel_flag = NO_FLAGS;
-  int sprintval_flag = USE_BASIC;
   int verbose = py_netsnmp_verbose();
   int old_format;
   int best_guess;
@@ -1814,10 +1819,6 @@ netsnmp_getnext(PyObject *self, PyObject *args)
       getlabel_flag |= USE_LONG_NAMES;
     if (py_netsnmp_attr_long(session, "UseNumeric"))
       getlabel_flag |= USE_NUMERIC_OIDS;
-    if (py_netsnmp_attr_long(session, "UseEnums"))
-      sprintval_flag = USE_ENUMS;
-    if (py_netsnmp_attr_long(session, "UseSprintValue"))
-      sprintval_flag = USE_SPRINT_VALUE;	
     best_guess = py_netsnmp_attr_long(session, "BestGuess");
     retry_nosuch = py_netsnmp_attr_long(session, "RetryNoSuch");
       
@@ -1939,16 +1940,12 @@ netsnmp_getnext(PyObject *self, PyObject *args)
 	py_netsnmp_attr_set_string(varbind, "type", type_str, 
 				   STRLEN(type_str));
 
-	len = __snprint_value(str_buf,sizeof(str_buf),
-			    vars,tp,type,sprintval_flag);
-	str_buf[len] = '\0';
-
-	py_netsnmp_attr_set_string(varbind, "val", str_buf, len);
+	PyObject *obj = value_to_pyobject(str_buf, sizeof(str_buf), vars, tp, type);
+	py_netsnmp_attr_set_pyobject(varbind, "val", obj);
 
 	/* save in return tuple as well */
-	PyTuple_SetItem(val_tuple, varlist_ind, 
-			(len ? Py_BuildValue("s#", str_buf, len) :
-			 Py_BuildValue("")));
+	Py_INCREF(obj);
+	PyTuple_SetItem(val_tuple, varlist_ind, obj);
 
 	Py_DECREF(varbind);
       } else {
@@ -1985,7 +1982,6 @@ netsnmp_walk(PyObject *self, PyObject *args)
   netsnmp_pdu *newpdu;
   netsnmp_variable_list *vars, *oldvars;
   struct tree *tp;
-  int len;
   oid **oid_arr;
   int *oid_arr_len;
   oid **oid_arr_broken_check;
@@ -2000,7 +1996,6 @@ netsnmp_walk(PyObject *self, PyObject *args)
   char *tag;
   char *iid;
   int getlabel_flag = NO_FLAGS;
-  int sprintval_flag = USE_BASIC;
   int verbose = py_netsnmp_verbose();
   int old_format;
   int best_guess;
@@ -2039,10 +2034,6 @@ netsnmp_walk(PyObject *self, PyObject *args)
       getlabel_flag |= USE_LONG_NAMES;
     if (py_netsnmp_attr_long(session, "UseNumeric"))
       getlabel_flag |= USE_NUMERIC_OIDS;
-    if (py_netsnmp_attr_long(session, "UseEnums"))
-      sprintval_flag = USE_ENUMS;
-    if (py_netsnmp_attr_long(session, "UseSprintValue"))
-      sprintval_flag = USE_SPRINT_VALUE;	
     best_guess = py_netsnmp_attr_long(session, "BestGuess");
     retry_nosuch = py_netsnmp_attr_long(session, "RetryNoSuch");
         
@@ -2260,11 +2251,8 @@ netsnmp_walk(PyObject *self, PyObject *args)
                   py_netsnmp_attr_set_string(varbind, "type", type_str,
                                              STRLEN(type_str));
 
-                  len = __snprint_value(str_buf,sizeof(str_buf),
-                                        vars,tp,type,sprintval_flag);
-                  str_buf[len] = '\0';
-
-                  py_netsnmp_attr_set_string(varbind, "val", str_buf, len);
+                  PyObject *obj = value_to_pyobject(str_buf, sizeof(str_buf), vars, tp, type);
+                  py_netsnmp_attr_set_pyobject(varbind, "val", obj);
             
                   /* push the varbind onto the return varbinds */
                   PyList_Append(varbinds, varbind);
@@ -2272,9 +2260,8 @@ netsnmp_walk(PyObject *self, PyObject *args)
                   /* save in return tuple as well */
                   /* save in return tuple as well - steals ref */
                   _PyTuple_Resize(&val_tuple, result_count+1);
-                  PyTuple_SetItem(val_tuple, result_count++, 
-                                  (len ? Py_BuildValue("s#", str_buf, len) :
-                                   Py_BuildValue("")));
+                  Py_INCREF(obj);
+                  PyTuple_SetItem(val_tuple, result_count++, obj);
             
 
               } else {
@@ -2342,7 +2329,6 @@ netsnmp_getbulk(PyObject *self, PyObject *args)
   netsnmp_pdu *pdu, *response;
   netsnmp_variable_list *vars;
   struct tree *tp;
-  int len;
   oid *oid_arr;
   int oid_arr_len = MAX_OID_LEN;
   int type;
@@ -2355,7 +2341,6 @@ netsnmp_getbulk(PyObject *self, PyObject *args)
   char *tag;
   char *iid;
   int getlabel_flag = NO_FLAGS;
-  int sprintval_flag = USE_BASIC;
   int verbose = py_netsnmp_verbose();
   int old_format;
   int best_guess;
@@ -2390,10 +2375,6 @@ netsnmp_getbulk(PyObject *self, PyObject *args)
 	getlabel_flag |= USE_LONG_NAMES;
       if (py_netsnmp_attr_long(session, "UseNumeric"))
 	getlabel_flag |= USE_NUMERIC_OIDS;
-      if (py_netsnmp_attr_long(session, "UseEnums"))
-	sprintval_flag = USE_ENUMS;
-      if (py_netsnmp_attr_long(session, "UseSprintValue"))
-	sprintval_flag = USE_SPRINT_VALUE;	
       best_guess = py_netsnmp_attr_long(session, "BestGuess");
       retry_nosuch = py_netsnmp_attr_long(session, "RetryNoSuch");
       
@@ -2517,19 +2498,16 @@ netsnmp_getbulk(PyObject *self, PyObject *args)
 	    py_netsnmp_attr_set_string(varbind, "type", type_str, 
 				       STRLEN(type_str));
 
-	    len = __snprint_value(str_buf,sizeof(str_buf),
-				  vars,tp,type,sprintval_flag);
-	    str_buf[len] = '\0';
-
-	    py_netsnmp_attr_set_string(varbind, "val", str_buf, len);
+	    PyObject *obj = value_to_pyobject(str_buf, sizeof(str_buf), vars, tp, type);
+	    py_netsnmp_attr_set_pyobject(varbind, "val", obj);
 
 	    /* push varbind onto varbinds */
 	    PyList_Append(varbinds, varbind);
 
 	    /* save in return tuple as well - steals ref */
 	    _PyTuple_Resize(&val_tuple, varbind_ind+1);
-	    PyTuple_SetItem(val_tuple, varbind_ind, 
-			       Py_BuildValue("s#", str_buf, len));
+	    Py_INCREF(obj);
+	    PyTuple_SetItem(val_tuple, varbind_ind, obj);
 
 	    Py_DECREF(varbind);
 
