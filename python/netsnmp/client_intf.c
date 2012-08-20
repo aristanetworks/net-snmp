@@ -1226,6 +1226,30 @@ py_netsnmp_attr_set_string(PyObject *obj, char *attr_name,
   return ret;
 }
 
+static int
+py_netsnmp_attr_set_int(PyObject *obj, char *attr_name, 
+			int val)
+{
+  int ret = -1;
+  if (obj && attr_name) {
+    PyObject* val_obj = Py_BuildValue("i", val);
+    ret = PyObject_SetAttrString(obj, attr_name, val_obj);
+    Py_DECREF(val_obj);
+  }
+  return ret;
+}
+
+
+static int
+py_netsnmp_attr_set_pyobject(PyObject *obj, char *attr_name, PyObject *val)
+{
+  int ret = -1;
+  if (obj && attr_name) {
+    ret = PyObject_SetAttrString(obj, attr_name, val);
+  }
+  return ret;
+}
+
 /**
  * Update python session object error attributes.
  *
@@ -1245,9 +1269,9 @@ py_netsnmp_attr_set_string(PyObject *obj, char *attr_name,
  * operation.
  *
  * @param[in] session The python object that represents our current Session
- * @param[in|out] err_str A string describing err_ind
- * @param[in|out] err_num The system errno currently stored by our session
- * @param[in|out] err_ind The snmp errno currently stored by our session
+ * @param[in] err_str A string describing err_ind
+ * @param[in] err_num The system errno currently stored by our session
+ * @param[in] err_ind The snmp errno currently stored by our session
  */
 static void
 __py_netsnmp_update_session_errors(PyObject *session, char *err_str,
@@ -1256,24 +1280,38 @@ __py_netsnmp_update_session_errors(PyObject *session, char *err_str,
     PyObject *tmp_for_conversion; 
 
     py_netsnmp_attr_set_string(session, "ErrorStr", err_str, STRLEN(err_str));
-
-    tmp_for_conversion = PyInt_FromLong(err_num);
-    PyObject_SetAttrString(session, "ErrorNum", tmp_for_conversion);
-    Py_DECREF(tmp_for_conversion);
-
-    tmp_for_conversion = PyInt_FromLong(err_ind);
-    PyObject_SetAttrString(session, "ErrorInd", tmp_for_conversion);
-    Py_DECREF(tmp_for_conversion);
+    py_netsnmp_attr_set_int(session, "ErrorNum", err_num);
+    py_netsnmp_attr_set_int(session, "ErrorInd", err_ind);
 }
 
-static int
-py_netsnmp_attr_set_pyobject(PyObject *obj, char *attr_name, PyObject *val)
+static void
+py_netsnmp_set_session_error_from_type(PyObject *session, int type)
 {
-  int ret = -1;
-  if (obj && attr_name) {
-    ret = PyObject_SetAttrString(obj, attr_name, val);
+  char const * err_str = NULL;
+  int err_ind = 0;
+
+  switch (type) {
+    case SNMP_NOSUCHINSTANCE:
+      err_str = "No Such Instance currently exists at this OID";
+      err_ind = type;
+      break;
+    case SNMP_NOSUCHOBJECT:
+      err_str = "No Such Object available on this agent at this OID";
+      err_ind = type;
+      break;
+    case SNMP_ENDOFMIBVIEW:
+      err_str = "No more variables left in this MIB View "
+                "(It is past the end of the MIB tree)";
+      err_ind = type;
+      break;
+    default:
+      /* Do not set error on session */
+      break;
   }
-  return ret;
+
+  if (err_ind) {
+    __py_netsnmp_update_session_errors(session, err_str, 0, err_ind);
+  }
 }
 
 static PyObject *
@@ -1330,7 +1368,7 @@ netsnmp_create_session(PyObject *self, PyObject *args)
 
   if (ss == NULL) {
     if (verbose) 
-      printf("error:snmp_new_session: Couldn't open SNMP session");
+      printf("error:snmp_new_session: Couldn't open SNMP session\n");
   }
  end:
   return PyLong_FromVoidPtr((void *)ss);
@@ -1618,12 +1656,11 @@ netsnmp_get(PyObject *self, PyObject *args)
   int old_format;
   int best_guess;
   int retry_nosuch;
-  int err_ind;
-  int err_num;
+  int err_ind = 0;
+  int err_num = 0;
   char err_str[STR_BUF_SIZE];
-  char *tmpstr;
-  Py_ssize_t tmplen;
 	   
+  err_str[0] = '\0';  
   oid_arr = calloc(MAX_OID_LEN, sizeof(oid));
 
   if (oid_arr && args) {
@@ -1633,10 +1670,6 @@ netsnmp_get(PyObject *self, PyObject *args)
     }
 
     ss = (SnmpSession *)py_netsnmp_attr_void_ptr(session, "sess_ptr");
-
-    if (py_netsnmp_attr_string(session, "ErrorStr", &tmpstr, &tmplen) < 0) {
-      goto done;
-    }
 
     if (py_netsnmp_attr_long(session, "UseLongNames"))
       getlabel_flag |= USE_LONG_NAMES;
@@ -1664,7 +1697,7 @@ netsnmp_get(PyObject *self, PyObject *args)
 	  varlist_len++;
 	} else {
 	  if (verbose)
-	    printf("error: get: unknown object ID (%s)",
+	    printf("error: get: unknown object ID (%s)\n",
 		   (tag ? tag : "<null>"));
 	  snmp_free_pdu(pdu);
 	  goto done;
@@ -1678,7 +1711,7 @@ netsnmp_get(PyObject *self, PyObject *args)
       if (PyErr_Occurred()) {
 	/* propagate error */
 	if (verbose)
-	  printf("error: get: unknown python error");
+	  printf("error: get: unknown python error\n");
 	snmp_free_pdu(pdu);
 	goto done;
       }
@@ -1765,6 +1798,9 @@ netsnmp_get(PyObject *self, PyObject *args)
 
 	PyObject *obj = value_to_pyobject(str_buf, sizeof(str_buf), vars, tp, type);
 	py_netsnmp_attr_set_pyobject(varbind, "val", obj);
+	if (obj == Py_None) {
+	  py_netsnmp_set_session_error_from_type(session, vars->type);
+	}
 
 	/* save in return tuple as well */
 	Py_INCREF(obj);
@@ -1818,12 +1854,11 @@ netsnmp_getnext(PyObject *self, PyObject *args)
   int old_format;
   int best_guess;
   int retry_nosuch;
-  int err_ind;
-  int err_num;
+  int err_ind = 0;
+  int err_num = 0;
   char err_str[STR_BUF_SIZE];
-  char *tmpstr;
-  Py_ssize_t tmplen;
 	   
+  err_str[0] = '\0';  
   oid_arr = calloc(MAX_OID_LEN, sizeof(oid));
 
   if (oid_arr && args) {
@@ -1833,13 +1868,6 @@ netsnmp_getnext(PyObject *self, PyObject *args)
     }
 
     ss = (SnmpSession *)py_netsnmp_attr_void_ptr(session, "sess_ptr");
-
-    if (py_netsnmp_attr_string(session, "ErrorStr", &tmpstr, &tmplen) < 0) {
-      goto done;
-    }
-    memcpy(&err_str, tmpstr, tmplen);
-    err_num = py_netsnmp_attr_long(session, "ErrorNum");
-    err_ind = py_netsnmp_attr_long(session, "ErrorInd");
 
     if (py_netsnmp_attr_long(session, "UseLongNames"))
       getlabel_flag |= USE_LONG_NAMES;
@@ -1871,7 +1899,7 @@ netsnmp_getnext(PyObject *self, PyObject *args)
 	  varlist_len++;
 	} else {
 	  if (verbose)
-	    printf("error: get: unknown object ID (%s)",
+	    printf("error: get: unknown object ID (%s)\n",
 		   (tag ? tag : "<null>"));
 	  snmp_free_pdu(pdu);
 	  goto done;
@@ -1885,7 +1913,7 @@ netsnmp_getnext(PyObject *self, PyObject *args)
       if (PyErr_Occurred()) {
 	/* propagate error */
 	if (verbose)
-	  printf("error: get: unknown python error");
+	  printf("error: get: unknown python error\n");
 	snmp_free_pdu(pdu);
 	goto done;
       }
@@ -1968,6 +1996,9 @@ netsnmp_getnext(PyObject *self, PyObject *args)
 
 	PyObject *obj = value_to_pyobject(str_buf, sizeof(str_buf), vars, tp, type);
 	py_netsnmp_attr_set_pyobject(varbind, "val", obj);
+	if (obj == Py_None) {
+	  py_netsnmp_set_session_error_from_type(session, vars->type);
+	}
 
 	/* save in return tuple as well */
 	Py_INCREF(obj);
@@ -2026,14 +2057,13 @@ netsnmp_walk(PyObject *self, PyObject *args)
   int old_format;
   int best_guess;
   int retry_nosuch;
-  int err_ind;
-  int err_num;
+  int err_ind = 0;
+  int err_num = 0;
   char err_str[STR_BUF_SIZE];
   int notdone = 1;
   int result_count = 0;
-  char *tmpstr;
-  Py_ssize_t tmplen;
 	   
+  err_str[0] = '\0';  
   if (args) {
 
     if (!PyArg_ParseTuple(args, "OO", &session, &varlist)) {
@@ -2048,13 +2078,6 @@ netsnmp_walk(PyObject *self, PyObject *args)
       goto done;
     }
     ss = (SnmpSession *)py_netsnmp_attr_void_ptr(session, "sess_ptr");
-
-    if (py_netsnmp_attr_string(session, "ErrorStr", &tmpstr, &tmplen) < 0) {
-      goto done;
-    }
-    memcpy(&err_str, tmpstr, tmplen);
-    err_num = py_netsnmp_attr_long(session, "ErrorNum");
-    err_ind = py_netsnmp_attr_long(session, "ErrorInd");
 
     if (py_netsnmp_attr_long(session, "UseLongNames"))
       getlabel_flag |= USE_LONG_NAMES;
@@ -2111,7 +2134,7 @@ netsnmp_walk(PyObject *self, PyObject *args)
         snmp_add_null_var(pdu, oid_arr[varlist_ind], oid_arr_len[varlist_ind]);
       } else {
         if (verbose)
-          printf("error: walk: unknown object ID (%s)",
+          printf("error: walk: unknown object ID (%s)\n",
       	   (tag ? tag : "<null>"));
         snmp_free_pdu(pdu);
         goto done;
@@ -2126,7 +2149,7 @@ netsnmp_walk(PyObject *self, PyObject *args)
     if (PyErr_Occurred()) {
       /* propagate error */
       if (verbose)
-        printf("error: walk: unknown python error (varlist)");
+        printf("error: walk: unknown python error (varlist)\n");
       snmp_free_pdu(pdu);
       goto done;
     }
@@ -2137,7 +2160,7 @@ netsnmp_walk(PyObject *self, PyObject *args)
     if (!val_tuple) {
       /* propagate error */
       if (verbose)
-        printf("error: walk: couldn't allocate a new value tuple");
+        printf("error: walk: couldn't allocate a new value tuple\n");
       snmp_free_pdu(pdu);
       goto done;
     }        
@@ -2320,7 +2343,7 @@ netsnmp_walk(PyObject *self, PyObject *args)
     if (PyErr_Occurred()) {
       /* propagate error */
       if (verbose)
-	printf("error: walk response processing: unknown python error");
+	printf("error: walk response processing: unknown python error\n");
       Py_DECREF(val_tuple);
     } 
   }
@@ -2371,12 +2394,11 @@ netsnmp_getbulk(PyObject *self, PyObject *args)
   int old_format;
   int best_guess;
   int retry_nosuch;
-  int err_ind;
-  int err_num;
+  int err_ind = 0;
+  int err_num = 0;
   char err_str[STR_BUF_SIZE];
-  char *tmpstr;
-  Py_ssize_t tmplen;
 	   
+  err_str[0] = '\0';  
   oid_arr = calloc(MAX_OID_LEN, sizeof(oid));
 
   if (oid_arr && args) {
@@ -2389,13 +2411,6 @@ netsnmp_getbulk(PyObject *self, PyObject *args)
     if (varlist && (varbinds = PyObject_GetAttrString(varlist, "varbinds"))) {
       
       ss = (SnmpSession *)py_netsnmp_attr_void_ptr(session, "sess_ptr");
-
-      if (py_netsnmp_attr_string(session, "ErrorStr", &tmpstr, &tmplen) < 0) {
-        goto done;
-      }
-      memcpy(&err_str, tmpstr, tmplen);
-      err_num = py_netsnmp_attr_long(session, "ErrorNum");
-      err_ind = py_netsnmp_attr_long(session, "ErrorInd");
 
       if (py_netsnmp_attr_long(session, "UseLongNames"))
 	getlabel_flag |= USE_LONG_NAMES;
@@ -2424,7 +2439,7 @@ netsnmp_getbulk(PyObject *self, PyObject *args)
 	  snmp_add_null_var(pdu, oid_arr, oid_arr_len);
 	} else {
 	  if (verbose)
-	    printf("error: get: unknown object ID (%s)",
+	    printf("error: get: unknown object ID (%s)\n",
 		   (tag ? tag : "<null>"));
 	  snmp_free_pdu(pdu);
 	  goto done;
@@ -2438,7 +2453,7 @@ netsnmp_getbulk(PyObject *self, PyObject *args)
       if (PyErr_Occurred()) {
 	/* propagate error */
 	if (verbose)
-	  printf("error: get: unknown python error");
+	  printf("error: get: unknown python error\n");
 	snmp_free_pdu(pdu);
 	goto done;
       }
@@ -2526,6 +2541,9 @@ netsnmp_getbulk(PyObject *self, PyObject *args)
 
 	    PyObject *obj = value_to_pyobject(str_buf, sizeof(str_buf), vars, tp, type);
 	    py_netsnmp_attr_set_pyobject(varbind, "val", obj);
+	    if (obj == Py_None) {
+	      py_netsnmp_set_session_error_from_type(session, vars->type);
+	    }
 
 	    /* push varbind onto varbinds */
 	    PyList_Append(varbinds, varbind);
@@ -2561,7 +2579,7 @@ netsnmp_getbulk(PyObject *self, PyObject *args)
     if (PyErr_Occurred()) {
       /* propagate error */
       if (verbose)
-	printf("error: getbulk response processing: unknown python error");
+	printf("error: getbulk response processing: unknown python error\n");
       Py_DECREF(val_tuple);
       val_tuple = NULL;
     }
@@ -2597,12 +2615,12 @@ netsnmp_set(PyObject *self, PyObject *args)
   int verbose = py_netsnmp_verbose();
   int best_guess;
   int status;
-  int err_ind;
-  int err_num;
+  int err_ind = 0;
+  int err_num = 0;
   char err_str[STR_BUF_SIZE];
-  char *tmpstr;
   Py_ssize_t tmplen;
 	   
+  err_str[0] = '\0';
   oid_arr = calloc(MAX_OID_LEN, sizeof(oid));
 
   if (oid_arr && args) {
@@ -2612,11 +2630,6 @@ netsnmp_set(PyObject *self, PyObject *args)
     }
 
     ss = (SnmpSession *)py_netsnmp_attr_void_ptr(session, "sess_ptr");
-
-    /* PyObject_SetAttrString(); */
-    if (py_netsnmp_attr_string(session, "ErrorStr", &tmpstr, &tmplen) < 0) {
-      goto done;
-    }
 
     use_enums = py_netsnmp_attr_long(session, "UseEnums");
 	
@@ -2638,7 +2651,7 @@ netsnmp_set(PyObject *self, PyObject *args)
 
 	if (oid_arr_len==0) {
 	  if (verbose)
-	    printf("error: set: unknown object ID (%s)",
+	    printf("error: set: unknown object ID (%s)\n",
 		 (tag?tag:"<null>"));
 	  snmp_free_pdu(pdu);
 	  goto done;
@@ -2652,7 +2665,7 @@ netsnmp_set(PyObject *self, PyObject *args)
 	  type = __translate_appl_type(type_str);
 	  if (type == TYPE_UNKNOWN) {
 	    if (verbose)
-	      printf("error: set: no type found for object");
+	      printf("error: set: no type found for object\n");
 	    snmp_free_pdu(pdu);
 	    goto done;
 	  }
@@ -2680,7 +2693,7 @@ netsnmp_set(PyObject *self, PyObject *args)
 				tmp_val_str, len, type);
 
 	if (verbose && status == FAILURE)
-	  printf("error: set: adding variable/value to PDU");
+	  printf("error: set: adding variable/value to PDU\n");
 
 	/* release reference when done */
 	Py_DECREF(varbind);
@@ -2691,7 +2704,7 @@ netsnmp_set(PyObject *self, PyObject *args)
       if (PyErr_Occurred()) {
 	/* propagate error */
 	if (verbose)
-	  printf("error: set: unknown python error");
+	  printf("error: set: unknown python error\n");
 	snmp_free_pdu(pdu);
 	goto done;
       }
