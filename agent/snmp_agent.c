@@ -43,6 +43,9 @@ SOFTWARE.
  *
  * @{
  */
+
+// XXX_advornic. Please remove me!
+
 #include <net-snmp/net-snmp-config.h>
 #include <net-snmp/net-snmp-features.h>
 
