@@ -582,13 +582,11 @@ handle_master_agentx_packet(int operation,
     gettimeofday(&end, NULL);
     NETSNMP_TIMERSUB(&end, &begin, &delta);
     handler_usec = delta.tv_sec * 1e6 + delta.tv_usec;
-    if (getenv("ABUILD")) {
+    if (getenv("PROFILE_AGENTX_HANDLERS")) {
        char buf[80];
        snprintf(buf, sizeof(buf) - 1,
                 "Handler for command %d took %f usecs\n", pdu->command, handler_usec);
-       // Using LOG_WARNING instead of LOG_INFO so that we don't have to fiddle with
-       // log-level settings.
-       snmp_log(LOG_WARNING, buf);
+       snmp_log(LOG_INFO, buf);
     }
 
     asp->pdu->time = netsnmp_get_agent_uptime();
