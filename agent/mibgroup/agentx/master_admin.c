@@ -585,7 +585,7 @@ handle_master_agentx_packet(int operation,
     if (getenv("PROFILE_AGENTX_HANDLERS")) {
        char buf[80];
        snprintf(buf, sizeof(buf) - 1,
-                "Handler for command %d took %f usecs\n", pdu->command, handler_usec);
+                "AgentX handler for command %d took %f usecs starting at @%d\n", pdu->command, handler_usec, (int) begin.tv_sec);
        snmp_log(LOG_INFO, buf);
     }
 
