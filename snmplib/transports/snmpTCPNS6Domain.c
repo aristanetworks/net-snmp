@@ -358,7 +358,7 @@ netsnmp_tcpns6_ctor(void)
     tcpns6Domain.f_create_from_tstring     = NULL;
     tcpns6Domain.f_create_from_tstring_new = netsnmp_tcpns6_create_tstring;
     tcpns6Domain.f_create_from_ostring     = netsnmp_tcpns6_create_ostring;
-    tcpns6Domain.prefix = (const char**)calloc(1, sizeof(char *));
+    tcpns6Domain.prefix = (const char**)calloc(2, sizeof(char *));
     tcpns6Domain.prefix[0] = "tcpns6";
 
     netsnmp_tdomain_register(&tcpns6Domain);

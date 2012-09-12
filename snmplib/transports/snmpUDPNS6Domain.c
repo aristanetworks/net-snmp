@@ -669,7 +669,7 @@ netsnmp_udpns6_ctor(void)
     udpns6Domain.f_create_from_tstring     = NULL;
     udpns6Domain.f_create_from_tstring_new = netsnmp_udpns6_create_tstring;
     udpns6Domain.f_create_from_ostring     = netsnmp_udpns6_create_ostring;
-    udpns6Domain.prefix = (const char**)calloc(1, sizeof(char *));
+    udpns6Domain.prefix = (const char**)calloc(2, sizeof(char *));
     udpns6Domain.prefix[0] = "udpns6";
 
     netsnmp_tdomain_register(&udpns6Domain);
