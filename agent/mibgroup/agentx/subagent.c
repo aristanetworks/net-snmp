@@ -245,14 +245,13 @@ free_set_vars(netsnmp_session * ss, netsnmp_pdu *pdu)
 #endif /* !NETSNMP_NO_WRITE_SUPPORT */
 
 static void
-send_agentx_error(netsnmp_session *session, netsnmp_pdu *pdu, int errstat,
-      int errindex)
+send_agentx_error(netsnmp_session *session, netsnmp_pdu *pdu, int errstat, int errindex)
 {
     pdu = snmp_clone_pdu(pdu);
-    pdu->command = AGENTX_MSG_RESPONSE;
-    pdu->version = session->version;
-    pdu->errstat = errstat;
-    pdu->errindex = errindex;
+    pdu->command   = AGENTX_MSG_RESPONSE;
+    pdu->version   = session->version;
+    pdu->errstat   = errstat;
+    pdu->errindex  = errindex;
     snmp_free_varbind(pdu->variables);
     pdu->variables = NULL;
 
@@ -318,12 +317,10 @@ handle_agentx_packet(int operation, netsnmp_session * session, int reqid,
              * agentx_reopen_session unregisters itself if it succeeds in talking 
              * to the master agent.  
              */
-            snmp_alarm_register(period, SA_REPEAT, agentx_reopen_session,
-                                NULL);
-            snmp_log(LOG_INFO, "AgentX master disconnected us, reconnecting in %d\n",
-                  period);
+            snmp_alarm_register(period, SA_REPEAT, agentx_reopen_session, NULL);
+            snmp_log(LOG_INFO, "AgentX master disconnected us, reconnecting in %d\n", period);
         } else {
-            snmp_log(LOG_INFO, "AgentX master disconnected us, not reconnecting.\n");
+            snmp_log(LOG_INFO, "AgentX master disconnected us, not reconnecting\n");
         }
         return 0;
     } else if (operation != NETSNMP_CALLBACK_OP_RECEIVED_MESSAGE) {
@@ -341,6 +338,11 @@ handle_agentx_packet(int operation, netsnmp_session * session, int reqid,
 		(unsigned)pdu->transid, (unsigned)pdu->sessid));
     pdu->version = AGENTX_VERSION_1;
     pdu->flags |= UCD_MSG_FLAG_ALWAYS_IN_VIEW;
+
+    /* Master agent is alive, no need to ping */
+    if (session->securityModel != SNMP_DEFAULT_SECMODEL) {
+        snmp_alarm_reset(session->securityModel);
+    }
 
     if (pdu->command == AGENTX_MSG_GET
         || pdu->command == AGENTX_MSG_GETNEXT
@@ -450,6 +452,7 @@ handle_agentx_packet(int operation, netsnmp_session * session, int reqid,
         if (asi == NULL) {
             SNMP_FREE(smagic);
             snmp_log(LOG_WARNING, "restore_set_vars() failed\n");
+            send_agentx_error(session, pdu, AGENTX_ERR_PROCESSING_ERROR, 0);
             return 1;
         }
         if (asi->mode == SNMP_MSG_INTERNAL_SET_RESERVE1 ||
@@ -513,6 +516,26 @@ handle_agentx_packet(int operation, netsnmp_session * session, int reqid,
     return 1;
 }
 
+static int
+_invalid_op_and_magic(int op, ns_subagent_magic *smagic)
+{
+    int invalid = 0;
+
+    if (smagic && (snmp_sess_pointer(smagic->session) == NULL ||
+        op == NETSNMP_CALLBACK_OP_TIMED_OUT)) {
+        if (smagic->ovars != NULL) {
+            snmp_free_varbind(smagic->ovars);
+        }
+        free(smagic);
+        invalid = 1;
+    }
+
+    if (op != NETSNMP_CALLBACK_OP_RECEIVED_MESSAGE || smagic == NULL)
+        invalid = 1;
+
+    return invalid;
+}
+
 int
 handle_subagent_response(int op, netsnmp_session * session, int reqid,
                          netsnmp_pdu *pdu, void *magic)
@@ -521,13 +544,7 @@ handle_subagent_response(int op, netsnmp_session * session, int reqid,
     netsnmp_variable_list *u = NULL, *v = NULL;
     int             rc = 0;
 
-    if (op != NETSNMP_CALLBACK_OP_RECEIVED_MESSAGE || magic == NULL) {
-        if (op == NETSNMP_CALLBACK_OP_TIMED_OUT && magic != NULL) {
-            if (smagic->ovars != NULL) {
-                snmp_free_varbind(smagic->ovars);
-            }
-            free(smagic);
-        }
+    if (_invalid_op_and_magic(op, magic)) {
         return 1;
     }
 
@@ -807,6 +824,7 @@ subagent_open_master_session(void)
 {
     netsnmp_transport *t;
     netsnmp_session sess;
+    const char *agentx_socket;
 
     DEBUGMSGTL(("agentx/subagent", "opening session...\n"));
 
@@ -824,9 +842,9 @@ subagent_open_master_session(void)
     sess.callback = handle_agentx_packet;
     sess.authenticator = NULL;
 
-    t = netsnmp_transport_open_client(
-            "agentx", netsnmp_ds_get_string(NETSNMP_DS_APPLICATION_ID,
-                                            NETSNMP_DS_AGENT_X_SOCKET));
+    agentx_socket = netsnmp_ds_get_string(NETSNMP_DS_APPLICATION_ID,
+                                          NETSNMP_DS_AGENT_X_SOCKET);
+    t = netsnmp_transport_open_client("agentx", agentx_socket);
     if (t == NULL) {
         /*
          * Diagnose snmp_open errors with the input
@@ -836,12 +854,9 @@ subagent_open_master_session(void)
         if (!netsnmp_ds_get_boolean(NETSNMP_DS_APPLICATION_ID,
                                     NETSNMP_DS_AGENT_NO_CONNECTION_WARNINGS)) {
             char buf[1024];
-            const char *socket =
-                netsnmp_ds_get_string(NETSNMP_DS_APPLICATION_ID,
-                                      NETSNMP_DS_AGENT_X_SOCKET);
             snprintf(buf, sizeof(buf), "Warning: "
                      "Failed to connect to the agentx master agent (%s)",
-                     socket ? socket : "[default]");
+                     agentx_socket ? agentx_socket : "[default]");
             if (!netsnmp_ds_get_boolean(NETSNMP_DS_APPLICATION_ID,
                                         NETSNMP_DS_AGENT_NO_ROOT_ACCESS)) {
                 netsnmp_sess_log_error(LOG_WARNING, buf, &sess);
@@ -862,8 +877,7 @@ subagent_open_master_session(void)
             char buf[1024];
             snprintf(buf, sizeof(buf), "Error: "
                      "Failed to create the agentx master agent session (%s)",
-                     netsnmp_ds_get_string(NETSNMP_DS_APPLICATION_ID,
-                                           NETSNMP_DS_AGENT_X_SOCKET));
+                     agentx_socket);
             snmp_sess_perror(buf, &sess);
         }
         netsnmp_transport_free(t);

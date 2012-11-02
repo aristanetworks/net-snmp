@@ -535,7 +535,7 @@ char *
 snmp_log_syslogname(const char *pstr)
 {
   if (pstr)
-    strncpy (syslogname, pstr, sizeof(syslogname));
+    strlcpy (syslogname, pstr, sizeof(syslogname));
 
   return syslogname;
 }

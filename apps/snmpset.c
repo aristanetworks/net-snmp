@@ -172,6 +172,7 @@ main(int argc, char *argv[])
             case '3':
             case 'i':
             case 'u':
+            case '3':
             case 't':
             case 'a':
             case 'o':

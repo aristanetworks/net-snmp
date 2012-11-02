@@ -19,8 +19,9 @@ INSTALLHEADERS=version.h net-snmp-features.h
 INCLUDESUBDIR=system
 INCLUDESUBDIRHEADERS= aix.h bsd.h bsdi3.h bsdi4.h bsdi.h cygwin.h \
 	darwin.h darwin7.h darwin8.h darwin9.h darwin10.h dragonfly.h dynix.h \
-	freebsd2.h freebsd3.h freebsd4.h freebsd5.h freebsd6.h freebsd7.h freebsd8.h freebsd9.h freebsd.h \
-	generic.h \
+	freebsd2.h freebsd3.h freebsd4.h freebsd5.h freebsd6.h \
+	freebsd7.h freebsd8.h freebsd9.h freebsd10.h freebsd.h \
+        generic.h \
 	hpux.h irix.h linux.h mingw32.h mips.h netbsd.h osf5.h \
 	openbsd.h openbsd5.h openbsd4.h \
 	solaris2.3.h solaris2.4.h solaris2.5.h solaris2.6.h \
@@ -85,22 +86,23 @@ libtool:	$(LIBTOOL_DEPS)
 	$(SHELL) ./config.status --recheck
 
 
-snmplib:
+snmplib: @FEATURETARGS@
 	@(cd snmplib; $(MAKE) )
 
-agent:
+agent: @FEATURETARGS@
 	@(cd snmplib; $(MAKE) )
 	@(cd agent; $(MAKE) )
 
-apps:
+apps: @FEATURETARGS@
 	@(cd snmplib; $(MAKE) )
+	@(cd agent; $(MAKE) libs)
 	@(cd apps; $(MAKE) )
 
-snmpget snmpbulkget snmpwalk snmpbulkwalk snmptranslate snmpstatus snmpdelta snmptable snmptest snmpset snmpusm snmpvacm snmpgetnext encode_keychange snmpdf snmptrap snmptls:
+snmpget snmpbulkget snmpwalk snmpbulkwalk snmptranslate snmpstatus snmpdelta snmptable snmptest snmpset snmpusm snmpvacm snmpgetnext encode_keychange snmpdf snmptrap snmptls: @FEATURETARGS@
 	@(cd snmplib; $(MAKE) )
 	@(cd apps; $(MAKE) $@ )
 
-snmptrapd:
+agentxtrap snmptrapd: @FEATURETARGS@
 	@(cd snmplib; $(MAKE) )
 	@(cd agent; $(MAKE) libs)
 	@(cd apps; $(MAKE) $@ )
@@ -426,7 +428,7 @@ warningcheck:
 
 assertcheck:
 	@echo "Checking for non-snmp asserts..."
-	@if grep -n -w "assert" `$(FIND) $(top_srcdir) -name \*.\[ch\] | grep -v snmp_assert.h`; then false; fi
+	@if grep -n -w "assert" `$(FIND) $(top_srcdir) -name \*.\[ch\] | grep -v snmp_assert.h | egrep -v 'perl/.*c' | grep -v openssl`; then false; fi
 
 commentcheck:
 	@echo "Checking for C++ style comments..."

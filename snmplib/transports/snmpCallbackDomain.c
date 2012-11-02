@@ -353,7 +353,7 @@ netsnmp_callback_accept(netsnmp_transport *t)
 {
     DEBUGMSGTL(("transport_callback", "hook_accept enter\n"));
     DEBUGMSGTL(("transport_callback", "hook_accept exit\n"));
-    return 0;
+    return -1;
 }
 
 
@@ -385,8 +385,10 @@ netsnmp_callback_transport(int to)
      * our stuff 
      */
     mydata = SNMP_MALLOC_TYPEDEF(netsnmp_callback_info);
-    if (!mydata)
+    if (!mydata) {
+        SNMP_FREE(t);
         return NULL;
+    }
     mydata->linkedto = to;
     mydata->callback_num = ++callback_count;
     mydata->data = NULL;

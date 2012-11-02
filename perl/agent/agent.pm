@@ -87,7 +87,7 @@ use vars qw(@ISA %EXPORT_TAGS @EXPORT_OK @EXPORT $VERSION $AUTOLOAD);
 	SNMP_ERR_AUTHORIZATIONERROR
 	SNMP_ERR_NOTWRITABLE
 );
-$VERSION = '5.0701';
+$VERSION = '5.0702';
 
 sub AUTOLOAD {
     # This AUTOLOAD is used to 'autoload' constants from the constant()
@@ -98,7 +98,7 @@ sub AUTOLOAD {
     ($constname = $AUTOLOAD) =~ s/.*:://;
     croak "& not defined" if $constname eq 'constant';
     my $val;
-    ($!, $val) = constant($constname, @_ ? $_[0] : 0);
+    ($!, $val) = constant($constname);
     if ($! != 0) {
 	if ($! =~ /Invalid/ || $!{EINVAL}) {
 	    $AutoLoader::AUTOLOAD = $AUTOLOAD;
@@ -197,6 +197,12 @@ sub agent_check_and_process {
     my ($self, $blocking) = @_;
     $self->maybe_init_lib();
     __agent_check_and_process($blocking || 0);
+}
+
+sub uptime {
+    my $self = shift;
+    $self->maybe_init_lib();
+    return _uptime();
 }
 
 bootstrap NetSNMP::agent $VERSION;

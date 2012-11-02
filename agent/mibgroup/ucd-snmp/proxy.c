@@ -285,14 +285,13 @@ proxy_fill_in_session(netsnmp_mib_handler *handler,
                 return 0;
             }
 
-            *configured = malloc(strlen("-c") + 1);
-            strcpy((char*)*configured, "-c");
+            *configured = strdup("-c");
             DEBUGMSGTL(("proxy", "pdu has community string\n"));
             session->community_len = reqinfo->asp->pdu->community_len;
-            session->community = (u_char*)malloc(session->community_len + 1);
-            strncpy((char *)session->community,
-                    (const char *)reqinfo->asp->pdu->community,
-                    session->community_len);
+            session->community = malloc(session->community_len + 1);
+            sprintf((char *)session->community, "%.*s",
+                    (int) session->community_len,
+                    (const char *)reqinfo->asp->pdu->community);
         }
     }
 #endif
@@ -401,6 +400,8 @@ proxy_handler(netsnmp_mib_handler *handler,
 
     if (!pdu || !sp) {
         netsnmp_set_request_error(reqinfo, requests, SNMP_ERR_GENERR);
+        if (pdu)
+            snmp_free_pdu(pdu);
         return SNMP_ERR_NOERROR;
     }
 
@@ -561,7 +562,7 @@ proxy_got_response(int operation, netsnmp_session * sess, int reqid,
                                                            REQUEST_IS_NOT_DELEGATED);
             }
 #ifndef NETSNMP_NO_WRITE_SUPPORT
-	    else if ((cache->reqinfo->mode == MODE_SET_ACTION)) {
+	    else if (cache->reqinfo->mode == MODE_SET_ACTION) {
 		/*
 		 * In order for netsnmp_wrap_up_request to consider the
 		 * SET request complete,

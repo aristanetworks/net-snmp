@@ -11,6 +11,7 @@
 #include <net-snmp/net-snmp-config.h>
 #include <net-snmp/net-snmp-features.h>
 
+#include <sys/types.h>
 #if HAVE_IO_H
 #include <io.h>
 #endif
@@ -21,7 +22,6 @@
 #if HAVE_MALLOC_H
 #include <malloc.h>
 #endif
-#include <sys/types.h>
 #ifdef __alpha
 #ifndef _BSD
 #define _BSD
@@ -126,31 +126,7 @@ extern int      numprocs, numextens;
 const char *
 make_tempfile(void)
 {
-    static char     name[32];
-    int             fd = -1;
-
-    strcpy(name, get_temp_file_pattern());
-#ifdef HAVE_MKSTEMP
-    fd = mkstemp(name);
-#else
-    if (mktemp(name)) {
-# ifndef WIN32        
-        fd = open(name, O_CREAT | O_EXCL | O_WRONLY, S_IRUSR | S_IWUSR);
-# else
-        /*
-          Win32 needs _S_IREAD | _S_IWRITE to set permissions on file after closing
-        */
-        fd = _open(name, _O_CREAT | _O_EXCL | _O_WRONLY, _S_IREAD | _S_IWRITE);
-# endif
-    }
-#endif
-    if (fd >= 0) {
-        close(fd);
-        DEBUGMSGTL(("make_tempfile", "temp file created: %s\n", name));
-        return name;
-    }
-    snmp_log(LOG_ERR,"make_tempfile: error creating file %s\n", name);
-    return NULL;
+    return netsnmp_mktemp();
 }
 
 #ifndef NETSNMP_FEATURE_REMOVE_SHELL_COMMAND
@@ -296,7 +272,9 @@ get_exec_output(struct extensible *ex)
         if ((cfd = open(cachefile, O_WRONLY | O_TRUNC | O_CREAT, 0600)) < 0) {
                 snmp_log(LOG_ERR,"can not create cache file\n");
                 setPerrorstatus(cachefile);
+#ifdef NETSNMP_EXCACHETIME
                 cachetime = 0;
+#endif
                 return -1;
         }
         if (cachebytes > 0)
@@ -718,14 +696,12 @@ print_mib_oid(oid name[], size_t len)
 }
 
 void
-sprint_mib_oid(char *buf, oid name[], size_t len)
+sprint_mib_oid(char *buf, const oid *name, size_t len)
 {
     int             i;
-    for (i = 0; i < (int) len; i++) {
-        sprintf(buf, ".%d", (int) name[i]);
-        while (*buf != 0)
-            buf++;
-    }
+
+    for (i = 0; i < (int) len; i++)
+        buf += sprintf(buf, ".%" NETSNMP_PRIo "u", name[i]);
 }
 
 /*
@@ -798,7 +774,10 @@ parse_miboid(const char *buf, oid * oidout)
     if (*buf == '.')
         buf++;
     for (i = 0; isdigit((unsigned char)(*buf)); i++) {
-        oidout[i] = atoi(buf);
+        /* Subidentifiers are unsigned values, up to 2^32-1
+         * so we need to use 'strtoul' rather than 'atoi'
+         */
+        oidout[i] = strtoul(buf, NULL, 10) & 0xffffffff;
         while (isdigit((unsigned char)(*buf++)));
         if (*buf == '.')
             buf++;
@@ -1144,7 +1123,7 @@ int net_snmp_delete_prefix_info(prefix_cbx **head,
     }
     return 0;
 }
-#endif
+#endif /* NETSNMP_FEATURE_REMOVE_DELETE_PREFIX_INFO */
 
 #endif /* HAVE_LINUX_RTNETLINK_H */
          

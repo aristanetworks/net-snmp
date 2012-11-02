@@ -116,12 +116,12 @@ netsnmp_feature_child_of(usm_scapi, usm_support)
 
 #ifdef NETSNMP_USE_INTERNAL_CRYPTO
 static
-int SHA1_hmac(u_char * data, size_t len, u_char * mac, size_t maclen,
-              u_char * secret, size_t secretlen);
+int SHA1_hmac(const u_char * data, size_t len, u_char * mac, size_t maclen,
+              const u_char * secret, size_t secretlen);
 
 static
-int MD5_hmac(u_char * data, size_t len, u_char * mac, size_t maclen,
-             u_char * secret, size_t secretlen);
+int MD5_hmac(const u_char * data, size_t len, u_char * mac, size_t maclen,
+             const u_char * secret, size_t secretlen);
 #endif
 
 /*
@@ -454,7 +454,7 @@ sc_hash(const oid * hashtype, size_t hashtypelen, const u_char * buf,
 
 #ifdef NETSNMP_USE_OPENSSL
     const EVP_MD   *hashfn;
-    EVP_MD_CTX     ctx, *cptr;
+    EVP_MD_CTX     *cptr;
 #endif
 #ifdef NETSNMP_USE_INTERNAL_CRYPTO
     MD5_CTX        cmd5;
@@ -485,42 +485,32 @@ sc_hash(const oid * hashtype, size_t hashtypelen, const u_char * buf,
     }
 
 /** initialize the pointer */
-    memset(&ctx, 0, sizeof(ctx));
-    cptr = &ctx;
+#ifdef HAVE_EVP_MD_CTX_CREATE
+    cptr = EVP_MD_CTX_create();
+#else
+    cptr = malloc(sizeof(*cptr));
 #if defined(OLD_DES)
-    EVP_DigestInit(cptr, hashfn);
-#else /* !OLD_DES */
-    /* this is needed if the runtime library is different than the compiled
-       library since the openssl versions are very different. */
-    if (SSLeay() < 0x907000) {
-        /* the old version of the struct was bigger and thus more
-           memory is needed. should be 152, but we use 256 for safety. */
-        cptr = (EVP_MD_CTX *)malloc(256);
-        EVP_DigestInit(cptr, hashfn);
-    } else {
-        EVP_MD_CTX_init(cptr);
-        EVP_DigestInit(cptr, hashfn);
-    }
+    memset(cptr, 0, sizeof(*cptr));
+#else
+    EVP_MD_CTX_init(cptr);
 #endif
+#endif
+    EVP_DigestInit(cptr, hashfn);
 
 /** pass the data */
     EVP_DigestUpdate(cptr, buf, buf_len);
 
 /** do the final pass */
-#if defined(OLD_DES)
     EVP_DigestFinal(cptr, MAC, &tmp_len);
     *MAC_len = tmp_len;
-#else /* !OLD_DES */
-    if (SSLeay() < 0x907000) {
-        EVP_DigestFinal(cptr, MAC, &tmp_len);
-        *MAC_len = tmp_len;
-        free(cptr);
-    } else {
-        EVP_DigestFinal_ex(cptr, MAC, &tmp_len);
-        *MAC_len = tmp_len;
-        EVP_MD_CTX_cleanup(cptr);
-    }
-#endif                          /* OLD_DES */
+#ifdef HAVE_EVP_MD_CTX_DESTROY
+    EVP_MD_CTX_destroy(cptr);
+#else
+#if !defined(OLD_DES)
+    EVP_MD_CTX_cleanup(cptr);
+#endif
+    free(cptr);
+#endif
     return (rval);
 
 #elif NETSNMP_USE_INTERNAL_CRYPTO
@@ -1171,8 +1161,8 @@ sc_decrypt(const oid * privtype, size_t privtypelen,
  * of data, and prepended with a secret in the standard fashion 
  */
 static int
-MD5_hmac(u_char * data, size_t len, u_char * mac, size_t maclen,
-         u_char * secret, size_t secretlen)
+MD5_hmac(const u_char * data, size_t len, u_char * mac, size_t maclen,
+         const u_char * secret, size_t secretlen)
 {
 #define MD5_HASHKEYLEN 64
 #define MD5_SECRETKEYLEN 16
@@ -1183,7 +1173,8 @@ MD5_hmac(u_char * data, size_t len, u_char * mac, size_t maclen,
     u_char          extendedAuthKey[MD5_HASHKEYLEN];
     u_char          buf[MD5_HASHKEYLEN];
     size_t          i;
-    u_char         *cp, *newdata = NULL;
+    const u_char   *cp;
+    u_char         *newdata = NULL;
     int             rc = 0;
 
     /*
@@ -1268,8 +1259,8 @@ MD5_hmac(u_char * data, size_t len, u_char * mac, size_t maclen,
 }
 
 static int
-SHA1_hmac(u_char * data, size_t len, u_char * mac, size_t maclen,
-         u_char * secret, size_t secretlen)
+SHA1_hmac(const u_char * data, size_t len, u_char * mac, size_t maclen,
+          const u_char * secret, size_t secretlen)
 {
 #define SHA1_HASHKEYLEN   64
 #define SHA1_SECRETKEYLEN 20
@@ -1280,7 +1271,8 @@ SHA1_hmac(u_char * data, size_t len, u_char * mac, size_t maclen,
     u_char          extendedAuthKey[SHA1_HASHKEYLEN];
     u_char          buf[SHA1_HASHKEYLEN];
     size_t          i;
-    u_char         *cp, *newdata = NULL;
+    const u_char   *cp;
+    u_char         *newdata = NULL;
     int             rc = 0;
 
     /*

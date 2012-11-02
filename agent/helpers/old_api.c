@@ -103,8 +103,12 @@ netsnmp_register_old_api(const char *moduleName,
         reginfo->rootoid_len = (mibloclen + vp->namelen);
         reginfo->rootoid =
             (oid *) malloc(reginfo->rootoid_len * sizeof(oid));
-        if (reginfo->rootoid == NULL)
+        if (reginfo->rootoid == NULL) {
+            SNMP_FREE(vp);
+            SNMP_FREE(reginfo->handlerName);
+            SNMP_FREE(reginfo);
             return SNMP_ERR_GENERR;
+        }
 
         memcpy(reginfo->rootoid, mibloc, mibloclen * sizeof(oid));
         memcpy(reginfo->rootoid + mibloclen, vp->name, vp->namelen
@@ -127,7 +131,7 @@ netsnmp_register_old_api(const char *moduleName,
          */
         if (netsnmp_register_handler(reginfo) != MIB_REGISTERED_OK) {
             /** netsnmp_handler_registration_free(reginfo); already freed */
-            SNMP_FREE(vp);
+            /* SNMP_FREE(vp); already freed */
         }
     }
     return SNMPERR_SUCCESS;

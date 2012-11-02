@@ -350,13 +350,13 @@ when_dumped(char *filesys, int level, size_t * length)
                 continue;
 
             ++cp2;
-            while (isspace(*cp2))
+            while (isspace(0xFF & *cp2))
                 ++cp2;          /* Now find the dump level */
 
             if (level == FULL_DUMP) {
                 if (*(cp2++) != '0')
                     continue;   /* Not interested in partial dumps */
-                while (isspace(*cp2))
+                while (isspace(0xFF & *cp2))
                     ++cp2;
 
                 dumpdate = ctime_to_timet(cp2);
@@ -365,7 +365,7 @@ when_dumped(char *filesys, int level, size_t * length)
             } else {            /* Partial Dump */
                 if (*(cp2++) == '0')
                     continue;   /* Not interested in full dumps */
-                while (isspace(*cp2))
+                while (isspace(0xFF & *cp2))
                     ++cp2;
 
                 tmp = ctime_to_timet(cp2);
@@ -390,17 +390,14 @@ cook_device(char *dev)
     static char     cooked_dev[SNMP_MAXPATH+1];
 
     if (!strncmp(dev, RAW_DEVICE_PREFIX, strlen(RAW_DEVICE_PREFIX))) {
-        strncpy(cooked_dev, COOKED_DEVICE_PREFIX, sizeof(cooked_dev)-1);
-        cooked_dev[ sizeof(cooked_dev)-1 ] = 0;
-        strncat(cooked_dev, dev + strlen(RAW_DEVICE_PREFIX),
-                sizeof(cooked_dev)-strlen(cooked_dev)-1);
-        cooked_dev[ sizeof(cooked_dev)-1 ] = 0;
+        strlcpy(cooked_dev, COOKED_DEVICE_PREFIX, sizeof(cooked_dev));
+        strlcat(cooked_dev, dev + strlen(RAW_DEVICE_PREFIX),
+                sizeof(cooked_dev));
     } else {
-        strncpy(cooked_dev, dev, sizeof(cooked_dev)-1);
-        cooked_dev[ sizeof(cooked_dev)-1 ] = 0;
+        strlcpy(cooked_dev, dev, sizeof(cooked_dev));
     }
 
-    return (cooked_dev);
+    return cooked_dev;
 }
 
 

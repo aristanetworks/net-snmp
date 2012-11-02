@@ -231,8 +231,10 @@ start_new_cached_connection(netsnmp_transport *t,
         return NULL;
     
     /* allocate our TLS specific data */
-    if (NULL == (tlsdata = netsnmp_tlsbase_allocate_tlsdata(t, !we_are_client)))
+    if (NULL == (tlsdata = netsnmp_tlsbase_allocate_tlsdata(t, !we_are_client))) {
+        SNMP_FREE(cachep);
         return NULL;
+    }
     cachep->tlsdata = tlsdata;
 
     /* RFC5953: section 5.3.1, step 1:
@@ -427,7 +429,7 @@ _extract_addr_pair(netsnmp_transport *t, void *opaque, int olen)
 
     if (opaque && olen == sizeof(netsnmp_tmStateReference)) {
         netsnmp_tmStateReference *tmStateRef =
-            tmStateRef = (netsnmp_tmStateReference *) opaque;
+            (netsnmp_tmStateReference *) opaque;
 
         if (tmStateRef->have_addresses)
             addr_pair = &(tmStateRef->addresses);
@@ -817,6 +819,7 @@ netsnmp_dtlsudp_recv(netsnmp_transport *t, void *buf, int size,
         DEBUGMSGTL(("dtlsudp", "peer disconnected\n"));
         cachep->flags |= NETSNMP_BIO_DISCONNECTED;
         remove_and_free_bio_cache(cachep);
+        SNMP_FREE(tmStateRef);
         return rc;
     }
     cachep->flags |= NETSNMP_BIO_CONNECTED;
@@ -913,6 +916,7 @@ netsnmp_dtlsudp_recv(netsnmp_transport *t, void *buf, int size,
                     /* XXX: probably need to check for whether we should
                        send stuff from our end to continue the transaction
                     */
+                    SNMP_FREE(tmStateRef);
                     return -1;
                 } else {
                     /* XXX: free needed memory */
@@ -922,6 +926,7 @@ netsnmp_dtlsudp_recv(netsnmp_transport *t, void *buf, int size,
 		    /* Step 5 says these are always incremented */
 		    snmp_increment_statistic(STAT_TLSTM_SNMPTLSTMSESSIONINVALIDSERVERCERTIFICATES);
 		    snmp_increment_statistic(STAT_TLSTM_SNMPTLSTMSESSIONOPENERRORS);
+                    SNMP_FREE(tmStateRef);
                     return -1;
                 }
             }
@@ -939,12 +944,14 @@ netsnmp_dtlsudp_recv(netsnmp_transport *t, void *buf, int size,
                     /* XXX: probably need to check for whether we should
                        send stuff from our end to continue the transaction
                     */
+                    SNMP_FREE(tmStateRef);
                     return -1;
                 } else {
                     /* XXX: free needed memory */
                     snmp_log(LOG_ERR,
                              "DTLSUDP: failed to verify ssl certificate (of the client)\n");
                     snmp_increment_statistic(STAT_TLSTM_SNMPTLSTMSESSIONINVALIDCLIENTCERTIFICATES);
+                    SNMP_FREE(tmStateRef);
                     return -1;
                 }
             }
@@ -1061,7 +1068,7 @@ netsnmp_dtlsudp_send(netsnmp_transport *t, void *buf, int size,
          specs) then we create one automatically here.
     */
     if (opaque != NULL && *opaque != NULL &&
-        *olength == sizeof(netsnmp_tmStateReference))
+        olength != NULL && *olength == sizeof(netsnmp_tmStateReference))
         tmStateRef = (netsnmp_tmStateReference *) *opaque;
 
 
@@ -1506,13 +1513,11 @@ netsnmp_dtlsudp_create_tstring(const char *str, int isserver,
         tlsdata = (_netsnmpTLSBaseData *) t->data;
         /* search for a : */
         if (NULL != (cp = strrchr(str, ':'))) {
-            strncpy(buf, str, SNMP_MIN(cp-str, sizeof(buf)-1));
-            buf[SNMP_MIN(cp-str, sizeof(buf)-1)] = '\0';
+            sprintf(buf, "%.*s", (int) SNMP_MIN(cp - str, sizeof(buf) - 1),
+                    str);
         } else {
             /* else the entire spec is a host name only */
-            strncpy(buf, str,
-                    SNMP_MIN(strlen(str), sizeof(buf)-1));
-            buf[SNMP_MIN(strlen(str), sizeof(buf)-1)] = '\0';
+            strlcpy(buf, str, sizeof(buf));
         }
         tlsdata->their_hostname = strdup(buf);
     }

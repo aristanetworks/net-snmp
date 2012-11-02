@@ -438,19 +438,12 @@ main(int argc, char *argv[])
     int             arg, i, ret;
     int             dont_fork = 0, do_help = 0;
     int             log_set = 0;
-    int             uid = 0, gid = 0;
     int             agent_mode = -1;
     char           *pid_file = NULL;
     char            option_compatability[] = "-Le";
 #if HAVE_GETPID
     int fd;
     FILE           *PID;
-#endif
-#if HAVE_GETPWNAM && HAVE_PWD_H
-    struct passwd  *info;
-#endif
-#if HAVE_UNISTD_H
-    const char     *persistent_dir;
 #endif
 
 #ifndef WIN32
@@ -581,8 +574,8 @@ main(int argc, char *argv[])
             break;
 
         case 'd':
-            netsnmp_ds_set_boolean(NETSNMP_DS_LIBRARY_ID, 
-                                   NETSNMP_DS_LIB_QUICK_PRINT,
+            netsnmp_ds_set_boolean(NETSNMP_DS_LIBRARY_ID,
+                                   NETSNMP_DS_LIB_DUMP_PACKET,
                                    ++snmp_dump_packet);
             break;
 
@@ -602,19 +595,18 @@ main(int argc, char *argv[])
                 int             gid;
 
                 gid = strtoul(optarg, &ecp, 10);
+#if HAVE_GETGRNAM && HAVE_PWD_H
                 if (*ecp) {
-#if HAVE_GETPWNAM && HAVE_PWD_H
                     struct group  *info;
+
                     info = getgrnam(optarg);
-                    if (info) {
-                        gid = info->gr_gid;
-                    } else {
+                    gid = info ? info->gr_gid : -1;
+                    endgrent();
+                }
 #endif
-                        fprintf(stderr, "Bad group id: %s\n", optarg);
-                        exit(1);
-#if HAVE_GETPWNAM && HAVE_PWD_H
-                    }
-#endif
+                if (gid < 0) {
+                    fprintf(stderr, "Bad group id: %s\n", optarg);
+                    exit(1);
                 }
                 netsnmp_ds_set_int(NETSNMP_DS_APPLICATION_ID, 
 				   NETSNMP_DS_AGENT_GROUPID, gid);
@@ -781,18 +773,18 @@ main(int argc, char *argv[])
                 int             uid;
 
                 uid = strtoul(optarg, &ecp, 10);
+#if HAVE_GETPWNAM && HAVE_PWD_H
                 if (*ecp) {
-#if HAVE_GETPWNAM && HAVE_PWD_H
+                    struct passwd  *info;
+
                     info = getpwnam(optarg);
-                    if (info) {
-                        uid = info->pw_uid;
-                    } else {
+                    uid = info ? info->pw_uid : -1;
+                    endpwent();
+                }
 #endif
-                        fprintf(stderr, "Bad user id: %s\n", optarg);
-                        exit(1);
-#if HAVE_GETPWNAM && HAVE_PWD_H
-                    }
-#endif
+                if (uid < 0) {
+                    fprintf(stderr, "Bad user id: %s\n", optarg);
+                    exit(1);
                 }
                 netsnmp_ds_set_int(NETSNMP_DS_APPLICATION_ID, 
 				   NETSNMP_DS_AGENT_USERID, uid);
@@ -939,7 +931,10 @@ main(int argc, char *argv[])
     }
 
     SOCK_STARTUP;
-    init_agent(app_name);        /* do what we need to do first. */
+    if (init_agent(app_name) != 0) {
+        snmp_log(LOG_ERR, "Agent initialization failed\n");
+        exit(1);
+    }
     init_mib_modules();
 
     /*
@@ -1009,7 +1004,11 @@ main(int argc, char *argv[])
     }
 #endif
 
-#if HAVE_UNISTD_H
+#if defined(HAVE_UNISTD_H) && (defined(HAVE_CHOWN) || defined(HAVE_SETGID) || defined(HAVE_SETUID))
+    {
+    const char     *persistent_dir;
+    int             uid, gid;
+
     persistent_dir = get_persistent_directory();
     mkdirhier( persistent_dir, NETSNMP_AGENT_DIRECTORY_MODE, 0 );
    
@@ -1025,7 +1024,7 @@ main(int argc, char *argv[])
 
 #ifdef HAVE_SETGID
     if ((gid = netsnmp_ds_get_int(NETSNMP_DS_APPLICATION_ID, 
-				  NETSNMP_DS_AGENT_GROUPID)) != 0) {
+				  NETSNMP_DS_AGENT_GROUPID)) > 0) {
         DEBUGMSGTL(("snmpd/main", "Changing gid to %d.\n", gid));
         if (setgid(gid) == -1
 #ifdef HAVE_SETGROUPS
@@ -1042,8 +1041,10 @@ main(int argc, char *argv[])
 #endif
 #ifdef HAVE_SETUID
     if ((uid = netsnmp_ds_get_int(NETSNMP_DS_APPLICATION_ID, 
-				  NETSNMP_DS_AGENT_USERID)) != 0) {
+				  NETSNMP_DS_AGENT_USERID)) > 0) {
 #if HAVE_GETPWNAM && HAVE_PWD_H && HAVE_INITGROUPS
+        struct passwd *info;
+
         /*
          * Set supplementary groups before changing UID
          *   (which probably involves giving up privileges)
@@ -1059,6 +1060,7 @@ main(int argc, char *argv[])
                 }
             }
         }
+        endpwent();
 #endif
         DEBUGMSGTL(("snmpd/main", "Changing uid to %d.\n", uid));
         if (setuid(uid) == -1) {
@@ -1070,6 +1072,7 @@ main(int argc, char *argv[])
         }
     }
 #endif
+    }
 #endif
 
     /*
@@ -1272,8 +1275,9 @@ receive(void)
 
         DEBUGMSGTL(("snmpd/select", "select( numfds=%d, ..., tvp=%p)\n",
                     numfds, tvp));
-        if(tvp)
-            DEBUGMSGTL(("timer", "tvp %ld.%ld\n", tvp->tv_sec, tvp->tv_usec));
+        if (tvp)
+            DEBUGMSGTL(("timer", "tvp %ld.%ld\n", (long) tvp->tv_sec,
+                        (long) tvp->tv_usec));
         count = netsnmp_large_fd_set_select(numfds, &readfds, &writefds, &exceptfds,
 				     tvp);
         DEBUGMSGTL(("snmpd/select", "returned, count = %d\n", count));

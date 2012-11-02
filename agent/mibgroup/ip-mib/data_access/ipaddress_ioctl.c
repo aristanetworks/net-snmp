@@ -230,7 +230,7 @@ _netsnmp_ioctl_ipaddress_container_load_v4(netsnmp_container *container,
         /* restore the interface name if we modifed it due to unaliasing
          * above
          */
-        if (entry->flags | NETSNMP_ACCESS_IPADDRESS_ISALIAS) {
+        if (entry->flags & NETSNMP_ACCESS_IPADDRESS_ISALIAS) {
             memcpy(ifrp->ifr_name, extras->name, sizeof(extras->name));
         }
 
@@ -242,7 +242,7 @@ _netsnmp_ioctl_ipaddress_container_load_v4(netsnmp_container *container,
         addr_info = netsnmp_access_other_info_get(entry->if_index, AF_INET);
         if(addr_info.bcastflg) {
            bcastentry = netsnmp_access_ipaddress_entry_create();
-           if(NULL == entry) {
+           if(NULL == bcastentry) {
               rc = -3;
               break;
            }
@@ -345,6 +345,7 @@ _netsnmp_ioctl_ipaddress_container_load_v4(netsnmp_container *container,
 
         if (CONTAINER_INSERT(container, entry) < 0) {
             DEBUGMSGTL(("access:ipaddress:container","error with ipaddress_entry: insert into container failed.\n"));
+            NETSNMP_LOGONCE((LOG_ERR, "Duplicate IPv4 address detected, some interfaces may not be visible in IP-MIB\n"));
             netsnmp_access_ipaddress_entry_free(entry);
             continue;
         }
@@ -491,11 +492,10 @@ _netsnmp_ioctl_ipaddress_set_v4(netsnmp_ipaddress_entry * entry)
         alias_idx = _next_alias(name);
         snprintf(ifrq.ifr_name,sizeof(ifrq.ifr_name), "%s:%d",
                  name, alias_idx);
+        ifrq.ifr_name[sizeof(ifrq.ifr_name) - 1] = 0;
     }
     else
-        strncpy(ifrq.ifr_name, (char *) extras->name, sizeof(ifrq.ifr_name));
-
-    ifrq.ifr_name[ sizeof(ifrq.ifr_name)-1 ] = 0;
+        strlcpy(ifrq.ifr_name, (char *) extras->name, sizeof(ifrq.ifr_name));
 
     sin = (struct sockaddr_in*)&ifrq.ifr_addr;
     sin->sin_family = AF_INET;
@@ -543,8 +543,7 @@ _netsnmp_ioctl_ipaddress_delete_v4(netsnmp_ipaddress_entry * entry)
 
     memset(&ifrq, 0, sizeof(ifrq));
 
-    strncpy(ifrq.ifr_name, (char *) extras->name, sizeof(ifrq.ifr_name));
-    ifrq.ifr_name[ sizeof(ifrq.ifr_name)-1 ] = 0;
+    strlcpy(ifrq.ifr_name, (char *) extras->name, sizeof(ifrq.ifr_name));
 
     ifrq.ifr_flags = 0;
 

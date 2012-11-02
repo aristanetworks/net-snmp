@@ -236,9 +236,8 @@ netsnmp_ssh_recv(netsnmp_transport *t, void *buf, int size,
                                      user_pw->pw_name);
                             return -1;
                         }
-                        strncpy(addr_pair->username, user_pw->pw_name,
+                        strlcpy(addr_pair->username, user_pw->pw_name,
                                 sizeof(addr_pair->username));
-                        addr_pair->username[sizeof(addr_pair->username)-1] = '\0';
                     }
                     DEBUGMSGTL(("ssh", "Setting user name to %s\n",
                                 addr_pair->username));
@@ -309,9 +308,8 @@ netsnmp_ssh_recv(netsnmp_transport *t, void *buf, int size,
                          user_pw->pw_name);
                 return -1;
             }
-            strncpy(addr_pair->username, user_pw->pw_name,
+            strlcpy(addr_pair->username, user_pw->pw_name,
                     sizeof(addr_pair->username));
-            addr_pair->username[sizeof(addr_pair->username)-1] = '\0';
         }
         */
 
@@ -330,12 +328,12 @@ netsnmp_ssh_recv(netsnmp_transport *t, void *buf, int size,
     if (iamclient && 0) {
         /* XXX: we're on the client; we should have named the
            connection ourselves...  pull this from session somehow? */
-        strncpy(tmStateRef->securityName, addr_pair->username,
-                sizeof(tmStateRef->securityName)-1);
+        strlcpy(tmStateRef->securityName, addr_pair->username,
+                sizeof(tmStateRef->securityName));
     } else {
 #ifdef SNMPSSHDOMAIN_USE_EXTERNAL_PIPE
-        strncpy(tmStateRef->securityName, addr_pair->username,
-                sizeof(tmStateRef->securityName)-1);
+        strlcpy(tmStateRef->securityName, addr_pair->username,
+                sizeof(tmStateRef->securityName));
 #else /* we're called directly by sshd and use stdin/out */
         /* we're on the server... */
         /* XXX: this doesn't copy properly and can get pointer
@@ -349,8 +347,8 @@ netsnmp_ssh_recv(netsnmp_transport *t, void *buf, int size,
 
         /* XXX: detect and throw out overflow secname sizes rather
            than truncating. */
-        strncpy(tmStateRef->securityName, getenv("USER"),
-                sizeof(tmStateRef->securityName)-1);
+        strlcpy(tmStateRef->securityName, getenv("USER"),
+                sizeof(tmStateRef->securityName));
 #endif /* ! SNMPSSHDOMAIN_USE_EXTERNAL_PIPE */
     }
     tmStateRef->securityName[sizeof(tmStateRef->securityName)-1] = '\0';
@@ -389,9 +387,8 @@ netsnmp_ssh_send(netsnmp_transport *t, void *buf, int size,
 
     if (NULL != t && NULL != addr_pair && NULL != addr_pair->channel) {
         if (addr_pair->username[0] == '\0') {
-            strncpy(addr_pair->username, tmStateRef->securityName,
-                    sizeof(addr_pair->username)-1);
-            addr_pair->username[sizeof(addr_pair->username)-1] = '\0';
+            strlcpy(addr_pair->username, tmStateRef->securityName,
+                    sizeof(addr_pair->username));
         } else if (strcmp(addr_pair->username, tmStateRef->securityName) != 0 ||
                    strlen(addr_pair->username) != tmStateRef->securityNameLen) {
             /* error!  they must always match */
@@ -599,7 +596,6 @@ netsnmp_ssh_transport(struct sockaddr_in *addr, int local)
     if (t == NULL) {
         return NULL;
     }
-    memset(t, 0, sizeof(netsnmp_transport));
 
     t->domain = netsnmp_snmpSSHDomain;
     t->domain_length = netsnmp_snmpSSHDomain_len;
@@ -728,7 +724,6 @@ netsnmp_ssh_transport(struct sockaddr_in *addr, int local)
 #endif /* NETSNMP_NO_LISTEN_SUPPORT */
     } else {
         char *username;
-        size_t username_len;
         char *keyfilepub;
         char *keyfilepriv;
         
@@ -740,7 +735,6 @@ netsnmp_ssh_transport(struct sockaddr_in *addr, int local)
             snmp_log(LOG_ERR, "You must specify a ssh username to use.  See the snmp.conf manual page\n");
             return NULL;
         }
-        username_len = strlen(username);
 
         /* use the requested public key file */
         keyfilepub = netsnmp_ds_get_string(NETSNMP_DS_LIBRARY_ID,

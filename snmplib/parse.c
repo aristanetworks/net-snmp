@@ -2021,11 +2021,19 @@ parse_objectid(FILE * fp, char *name)
                  * The name for this node is the label for this entry 
                  */
                 np->label = strdup(name);
+                if (np->label == NULL) {
+                    SNMP_FREE(np->parent);
+                    SNMP_FREE(np);
+                    return (NULL);
+                }
             } else {
                 if (!nop->label) {
                     nop->label = (char *) malloc(20 + ANON_LEN);
-                    if (nop->label == NULL)
+                    if (nop->label == NULL) {
+                        SNMP_FREE(np->parent);
+                        SNMP_FREE(np);
                         return (NULL);
+                    }
                     sprintf(nop->label, "%s%d", ANON, anonymous++);
                 }
                 np->label = strdup(nop->label);
@@ -2694,29 +2702,12 @@ parse_objecttype(FILE * fp, char *name)
                         break;
                     else if (type == LEFTBRACKET)
                         level++;
-                    if (type == QUOTESTRING) {
-                        if (strlen(defbuf)+2 < sizeof(defbuf)) {
-                            defbuf[ strlen(defbuf)+2 ] = 0;
-                            defbuf[ strlen(defbuf)+1 ] = '"';
-                            defbuf[ strlen(defbuf)   ] = '\\';
-                        }
-                        defbuf[ sizeof(defbuf)-1 ] = 0;
-                    }
-                    strncat(defbuf, quoted_string_buffer,
-                            sizeof(defbuf)-strlen(defbuf)-1);
-                    defbuf[ sizeof(defbuf)-1 ] = 0;
-                    if (type == QUOTESTRING) {
-                        if (strlen(defbuf)+2 < sizeof(defbuf)) {
-                            defbuf[ strlen(defbuf)+2 ] = 0;
-                            defbuf[ strlen(defbuf)+1 ] = '"';
-                            defbuf[ strlen(defbuf)   ] = '\\';
-                        }
-                        defbuf[ sizeof(defbuf)-1 ] = 0;
-                    }
-                    if (strlen(defbuf)+1 < sizeof(defbuf)) {
-                        defbuf[ strlen(defbuf)+1 ] = 0;
-                        defbuf[ strlen(defbuf)   ] = ' ';
-                    }
+                    if (type == QUOTESTRING)
+                        strlcat(defbuf, "\\\"", sizeof(defbuf));
+                    strlcat(defbuf, quoted_string_buffer, sizeof(defbuf));
+                    if (type == QUOTESTRING)
+                        strlcat(defbuf, "\\\"", sizeof(defbuf));
+                    strlcat(defbuf, " ", sizeof(defbuf));
                 }
 
                 if (type != RIGHTBRACKET) {
@@ -3910,6 +3901,9 @@ read_module_internal(const char *name)
                 snmp_log_perror(mp->file);
                 return rval;
             }
+#ifdef HAVE_FLOCKFILE
+            flockfile(fp);
+#endif
             mp->no_imports = 0; /* Note that we've read the file */
             File = mp->file;
             mibLine = 1;
@@ -3918,6 +3912,9 @@ read_module_internal(const char *name)
              * Parse the file
              */
             np = parse(fp, NULL);
+#ifdef HAVE_FUNLOCKFILE
+            funlockfile(fp);
+#endif
             fclose(fp);
             File = oldFile;
             mibLine = oldLine;
@@ -4400,8 +4397,7 @@ parse(FILE * fp, struct node *root)
         case ENDOFFILE:
             continue;
         default:
-            strncpy(name, token, sizeof(name));
-            name[sizeof(name)-1] = '\0';
+            strlcpy(name, token, sizeof(name));
             type = get_token(fp, token, MAXTOKEN);
             nnp = NULL;
             if (type == MACRO) {
@@ -4419,8 +4415,7 @@ parse(FILE * fp, struct node *root)
                 print_error(name, "is a reserved word", lasttype);
             continue;           /* see if we can parse the rest of the file */
         }
-        strncpy(name, token, sizeof(name));
-        name[sizeof(name)-1] = '\0';
+        strlcpy(name, token, sizeof(name));
         type = get_token(fp, token, MAXTOKEN);
         nnp = NULL;
 
@@ -4610,6 +4605,21 @@ is_labelchar(int ich)
     return 0;
 }
 
+/**
+ * Read a single character from a file. Assumes that the caller has invoked
+ * flockfile(). Uses fgetc_unlocked() instead of getc() since the former is
+ * implemented as an inline function in glibc. See also bug 3447196
+ * (http://sourceforge.net/tracker/?func=detail&aid=3447196&group_id=12694&atid=112694).
+ */
+static int netsnmp_getc(FILE *stream)
+{
+#ifdef HAVE_FGETC_UNLOCKED
+    return fgetc_unlocked(stream);
+#else
+    return getc(stream);
+#endif
+}
+
 /*
  * Parses a token from the file.  The type of the token parsed is returned,
  * and the text is placed in the string pointed to by token.
@@ -4629,7 +4639,7 @@ get_token(FILE * fp, char *token, int maxtlen)
      * skip all white space 
      */
     do {
-        ch = getc(fp);
+        ch = netsnmp_getc(fp);
         if (ch == '\n')
             mibLine++;
     }
@@ -4643,7 +4653,7 @@ get_token(FILE * fp, char *token, int maxtlen)
         return parseQuoteString(fp, token, maxtlen);
     case '\'':                 /* binary or hex constant */
         seenSymbols = bdigits;
-        while ((ch = getc(fp)) != EOF && ch != '\'') {
+        while ((ch = netsnmp_getc(fp)) != EOF && ch != '\'') {
             switch (seenSymbols) {
             case bdigits:
                 if (ch == '0' || ch == '1')
@@ -4662,7 +4672,7 @@ get_token(FILE * fp, char *token, int maxtlen)
         if (ch == '\'') {
             unsigned long   val = 0;
             char           *run = token + 1;
-            ch = getc(fp);
+            ch = netsnmp_getc(fp);
             switch (ch) {
             case EOF:
                 return ENDOFFILE;
@@ -4721,25 +4731,25 @@ get_token(FILE * fp, char *token, int maxtlen)
     case '|':
         return BAR;
     case '.':
-        ch_next = getc(fp);
+        ch_next = netsnmp_getc(fp);
         if (ch_next == '.')
             return RANGE;
         ungetc(ch_next, fp);
         return LABEL;
     case ':':
-        ch_next = getc(fp);
+        ch_next = netsnmp_getc(fp);
         if (ch_next != ':') {
             ungetc(ch_next, fp);
             return LABEL;
         }
-        ch_next = getc(fp);
+        ch_next = netsnmp_getc(fp);
         if (ch_next != '=') {
             ungetc(ch_next, fp);
             return LABEL;
         }
         return EQUALS;
     case '-':
-        ch_next = getc(fp);
+        ch_next = netsnmp_getc(fp);
         if (ch_next == '-') {
             if (netsnmp_ds_get_boolean(NETSNMP_DS_LIBRARY_ID, 
 				       NETSNMP_DS_LIB_MIB_COMMENT_TERM)) {
@@ -4747,7 +4757,7 @@ get_token(FILE * fp, char *token, int maxtlen)
                  * Treat the rest of this line as a comment. 
                  */
                 while ((ch_next != EOF) && (ch_next != '\n'))
-                    ch_next = getc(fp);
+                    ch_next = netsnmp_getc(fp);
             } else {
                 /*
                  * Treat the rest of the line or until another '--' as a comment 
@@ -4756,11 +4766,11 @@ get_token(FILE * fp, char *token, int maxtlen)
                  * (this is the "technically" correct way to parse comments) 
                  */
                 ch = ' ';
-                ch_next = getc(fp);
+                ch_next = netsnmp_getc(fp);
                 while (ch_next != EOF && ch_next != '\n' &&
                        (ch != '-' || ch_next != '-')) {
                     ch = ch_next;
-                    ch_next = getc(fp);
+                    ch_next = netsnmp_getc(fp);
                 }
             }
             if (ch_next == EOF)
@@ -4770,6 +4780,7 @@ get_token(FILE * fp, char *token, int maxtlen)
             return get_token(fp, token, maxtlen);
         }
         ungetc(ch_next, fp);
+	/* fallthrough */
     default:
         /*
          * Accumulate characters until end of token is found.  Then attempt to
@@ -4780,7 +4791,7 @@ get_token(FILE * fp, char *token, int maxtlen)
             return LABEL;
         hash += tolower(ch);
       more:
-        while (is_labelchar(ch_next = getc(fp))) {
+        while (is_labelchar(ch_next = netsnmp_getc(fp))) {
             hash += tolower(ch_next);
             if (cp - token < maxtlen - 1)
                 *cp++ = ch_next;
@@ -4799,7 +4810,7 @@ get_token(FILE * fp, char *token, int maxtlen)
         if (tp) {
             if (tp->token != CONTINUE)
                 return (tp->token);
-            while (isspace((ch_next = getc(fp))))
+            while (isspace((ch_next = netsnmp_getc(fp))))
                 if (ch_next == '\n')
                     mibLine++;
             if (ch_next == EOF)
@@ -4846,7 +4857,10 @@ add_mibfile(const char* tmpstr, const char* d_name, FILE *ip )
                 tmpstr));
     mibLine = 1;
     File = tmpstr;
-    get_token(fp, token, MAXTOKEN);
+    if (get_token(fp, token, MAXTOKEN) != LABEL) {
+	    fclose(fp);
+	    return 1;
+    }
     /*
      * simple test for this being a MIB 
      */
@@ -4985,7 +4999,11 @@ read_mib(const char *filename)
     mibLine = 1;
     File = filename;
     DEBUGMSGTL(("parse-mibs", "Parsing file: %s...\n", filename));
-    get_token(fp, token, MAXTOKEN);
+    if (get_token(fp, token, MAXTOKEN) != LABEL) {
+	    snmp_log(LOG_ERR, "Failed to parse MIB file %s\n", filename);
+	    fclose(fp);
+	    return NULL;
+    }
     fclose(fp);
     new_module(token, filename);
     (void) netsnmp_read_module(token);
@@ -5057,7 +5075,7 @@ parseQuoteString(FILE * fp, char *token, int maxtlen)
     int             too_long = 0;
     char           *token_start = token;
 
-    for (ch = getc(fp); ch != EOF; ch = getc(fp)) {
+    for (ch = netsnmp_getc(fp); ch != EOF; ch = netsnmp_getc(fp)) {
         if (ch == '\r')
             continue;
         if (ch == '\n') {

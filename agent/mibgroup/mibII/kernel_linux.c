@@ -66,8 +66,8 @@ decode_icmp_msg(char *line, char *data, struct icmp4_msg_mib *msg)
      * getting modified. So we take a local copy for this purpose even though
      * its expensive.
      */
-    strncpy(line_cpy, line, sizeof(line_cpy));
-    strncpy(data_cpy, data, sizeof(data_cpy));
+    strlcpy(line_cpy, line, sizeof(line_cpy));
+    strlcpy(data_cpy, data, sizeof(data_cpy));
 
     lineptr = line_cpy;
     dataptr = data_cpy;

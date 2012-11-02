@@ -1,5 +1,11 @@
 #include <Python.h>
 
+#if PY_VERSION_HEX < 0x02050000
+typedef int Py_ssize_t;
+#define PY_SSIZE_T_MAX INT_MAX
+#define PY_SSIZE_T_MIN INT_MIN
+#endif
+
 #include <net-snmp/net-snmp-config.h>
 #include <net-snmp/net-snmp-includes.h>
 #include <sys/types.h>
@@ -93,8 +99,6 @@
 
 typedef netsnmp_session SnmpSession;
 typedef struct tree SnmpMibNode;
-static void __recalc_timeout (struct timeval*,struct timeval*,
-                                struct timeval*,struct timeval*, int* );
 static int __is_numeric_oid (char*);
 static int __is_leaf (struct tree*);
 static int __translate_appl_type (char*);
@@ -103,10 +107,6 @@ static int __sprint_num_objid (char *, oid *, int);
 static int __scan_num_objid (char *, oid *, size_t *);
 static int __get_type_str (int, char *);
 static int __get_label_iid (char *, char **, char **, int);
-static int __oid_cmp (oid *, int, oid *, int);
-static int __tp_sprint_num_objid (char*,SnmpMibNode *);
-static SnmpMibNode * __get_next_mib_node (SnmpMibNode *);
-static struct tree * __oid2tp (oid*, int, struct tree *, int*);
 static struct tree * __tag2oid (char *, char *, oid  *, int  *, int *, int);
 static int __concat_oid_str (oid *, int *, char *);
 static int __add_var_val_str (netsnmp_pdu *, oid *, int, char *,
@@ -152,46 +152,6 @@ __libraries_init(char *appname)
 		     NETSNMP_OID_OUTPUT_SUFFIX);
 }
 
-static void
-__recalc_timeout (tvp, ctvp, ltvp, itvp, block)
-struct timeval* tvp;
-struct timeval* ctvp;
-struct timeval* ltvp;
-struct timeval* itvp;
-int *block;
-{
-   struct timeval now;
-
-   if (!timerisset(itvp)) return;  /* interval zero means loop forever */
-   *block = 0;
-   gettimeofday(&now,(struct timezone *)0);
-
-   if (ctvp->tv_sec < 0) { /* first time or callback just fired */
-      timersub(&now,ltvp,ctvp);
-      timersub(ctvp,itvp,ctvp);
-      timersub(itvp,ctvp,ctvp);
-      timeradd(ltvp,itvp,ltvp);
-   } else {
-      timersub(&now,ltvp,ctvp);
-      timersub(itvp,ctvp,ctvp);
-   }
-
-   /* flag is set for callback but still hasnt fired so set to something
-    * small and we will service packets first if there are any ready
-    * (also guard against negative timeout - should never happen?)
-    */
-   if (!timerisset(ctvp) || ctvp->tv_sec < 0 || ctvp->tv_usec < 0) {
-      ctvp->tv_sec = 0;
-      ctvp->tv_usec = 10;
-   }
-
-   /* if snmp timeout > callback timeout or no more requests to process */
-   if (timercmp(tvp, ctvp, >) || !timerisset(tvp)) {
-      *tvp = *ctvp; /* use the smaller non-zero timeout */
-      timerclear(ctvp); /* used as a flag to let callback fire on timeout */
-   }
-}
-
 static int
 __is_numeric_oid (oidstr)
 char* oidstr;
@@ -210,21 +170,6 @@ struct tree* tp;
    char buf[MAX_TYPE_NAME_LEN];
    return (tp && (__get_type_str(tp->type,buf) || 
 		  (tp->parent && __get_type_str(tp->parent->type,buf) )));
-}
-
-static SnmpMibNode*
-__get_next_mib_node (tp)
-SnmpMibNode* tp;
-{
-   /* printf("tp = %lX, parent = %lX, peer = %lX, child = %lX\n",
-              tp, tp->parent, tp->next_peer, tp->child_list); */
-   if (tp->child_list) return(tp->child_list);
-   if (tp->next_peer) return(tp->next_peer);
-   if (!tp->parent) return(NULL);
-   for (tp = tp->parent; !tp->next_peer; tp = tp->parent) {
-      if (!tp->parent) return(NULL);
-   }
-   return(tp->next_peer);
 }
 
 static int
@@ -284,50 +229,36 @@ int type;
    switch (type) {
         case ASN_INTEGER:
             return(TYPE_INTEGER);
-	    break;
 	case ASN_OCTET_STR:
             return(TYPE_OCTETSTR);
-	    break;
 	case ASN_OPAQUE:
             return(TYPE_OPAQUE);
-	    break;
 	case ASN_OBJECT_ID:
             return(TYPE_OBJID);
-	    break;
 	case ASN_TIMETICKS:
             return(TYPE_TIMETICKS);
-	    break;
 	case ASN_GAUGE:
             return(TYPE_GAUGE);
-	    break;
 	case ASN_COUNTER:
             return(TYPE_COUNTER);
-	    break;
 	case ASN_IPADDRESS:
             return(TYPE_IPADDR);
-	    break;
 	case ASN_BIT_STR:
             return(TYPE_BITSTRING);
-	    break;
 	case ASN_NULL:
             return(TYPE_NULL);
-	    break;
 	/* no translation for these exception type values */
 	case SNMP_ENDOFMIBVIEW:
 	case SNMP_NOSUCHOBJECT:
 	case SNMP_NOSUCHINSTANCE:
 	    return(type);
-	    break;
 	case ASN_UINTEGER:
             return(TYPE_UINTEGER);
-	    break;
 	case ASN_COUNTER64:
             return(TYPE_COUNTER64);
-	    break;
 	default:
-            return(TYPE_OTHER);
             fprintf(stderr, "translate_asn_type: unhandled asn type (%d)\n",type);
-            break;
+            return(TYPE_OTHER);
         }
 }
 
@@ -474,21 +405,6 @@ int len;
 	buf += STRLEN(buf);
    }
    return SUCCESS;
-}
-
-static int
-__tp_sprint_num_objid (buf, tp)
-char *buf;
-SnmpMibNode *tp;
-{
-   oid newname[MAX_OID_LEN], *op;
-   /* code taken from get_node in snmp_client.c */
-   for (op = newname + MAX_OID_LEN - 1; op >= newname; op--) {
-      *op = tp->subid;
-      tp = tp->parent;
-      if (tp == NULL) break;
-   }
-   return __sprint_num_objid(buf, op, newname + MAX_OID_LEN - op);
 }
 
 static int
@@ -706,24 +622,6 @@ int flag;
    return(SUCCESS);
 }
 
-
-static int
-__oid_cmp(oida_arr, oida_arr_len, oidb_arr, oidb_arr_len)
-oid *oida_arr;
-int oida_arr_len;
-oid *oidb_arr;
-int oidb_arr_len;
-{
-   for (;oida_arr_len && oidb_arr_len;
-	oida_arr++, oida_arr_len--, oidb_arr++, oidb_arr_len--) {
-	if (*oida_arr == *oidb_arr) continue;
-	return(*oida_arr > *oidb_arr ? 1 : -1);
-   }
-   if (oida_arr_len == oidb_arr_len) return(0);
-   return(oida_arr_len > oidb_arr_len ? 1 : -1);
-}
-
-
 /* Convert a tag (string) to an OID array              */
 /* Tag can be either a symbolic name, or an OID string */
 static struct tree *
@@ -739,9 +637,6 @@ int    best_guess;
    struct tree *rtp = NULL;
    oid newname[MAX_OID_LEN], *op;
    size_t newname_len = 0;
-
-   char str_buf[STR_BUF_SIZE];
-   str_buf[0] = '\0';
 
    if (type) *type = TYPE_UNKNOWN;
    if (oid_arr_len) *oid_arr_len = 0;
@@ -828,42 +723,9 @@ int    best_guess;
       }
    }
  done:
-   if (iid && *iid) __concat_oid_str(oid_arr, oid_arr_len, iid);
+   if (iid && *iid && oid_arr_len)
+       __concat_oid_str(oid_arr, oid_arr_len, iid);
    return(rtp);
-}
-/* searches down the mib tree for the given oid
-   returns the last found tp and its index in lastind
- */
-static struct tree *
-__oid2tp (oidp, len, subtree, lastind)
-oid* oidp;
-int len;
-struct tree * subtree;
-int* lastind;
-{
-    struct tree    *return_tree = NULL;
-
-
-    for (; subtree; subtree = subtree->next_peer) {
-	if (*oidp == subtree->subid){
-	    goto found;
-	}
-    }
-    *lastind=0;
-    return NULL;
-
-found:
-    if (len > 1){
-       return_tree =
-          __oid2tp(oidp + 1, len - 1, subtree->child_list, lastind);
-       (*lastind)++;
-    } else {
-       *lastind=1;
-    }
-    if (return_tree)
-	return return_tree;
-    else
-	return subtree;
 }
 
 /* function: __concat_oid_str
@@ -880,19 +742,22 @@ oid *doid_arr;
 int *doid_arr_len;
 char * soid_str;
 {
-   char soid_buf[STR_BUF_SIZE];
+   char *soid_buf;
    char *cp;
    char *st;
 
    if (!soid_str || !*soid_str) return SUCCESS;/* successfully added nothing */
    if (*soid_str == '.') soid_str++;
-   strcpy(soid_buf, soid_str);
+   soid_buf = strdup(soid_str);
+   if (!soid_buf)
+       return FAILURE;
    cp = strtok_r(soid_buf,".",&st);
    while (cp) {
      sscanf(cp, "%lu", &(doid_arr[(*doid_arr_len)++]));
      /* doid_arr[(*doid_arr_len)++] =  atoi(cp); */
      cp = strtok_r(NULL,".",&st);
    }
+   free(soid_buf);
    return(SUCCESS);
 }
 
@@ -1036,7 +901,7 @@ char *err_str;
 int *err_num;
 int *err_ind;
 {
-   int status;
+   int status = 0;
    long command = pdu->command;
    char *tmp_err_str;
 
@@ -1049,15 +914,7 @@ int *err_ind;
    if (ss == NULL) {
        *err_num = 0;
        *err_ind = SNMPERR_BAD_SESSION;
-       strncpy(err_str, snmp_api_errstring(*err_ind), STR_BUF_SIZE - 1);
-       goto done;
-   }
-
-   tmp_err_str = calloc(1, STR_BUF_SIZE);
-   if (tmp_err_str == NULL) {
-       *err_num = errno;
-       *err_ind = SNMPERR_MALLOC;
-       strncpy(err_str, snmp_api_errstring(*err_ind), STR_BUF_SIZE - 1);
+       strlcpy(err_str, snmp_api_errstring(*err_ind), STR_BUF_SIZE);
        goto done;
    }
 
@@ -1102,8 +959,8 @@ retry:
             /* in SNMPv2c, SNMPv2u, SNMPv2*, and SNMPv3 PDUs */
             case SNMP_ERR_INCONSISTENTNAME:
             default:
-               strncpy(err_str, (char*)snmp_errstring((*response)->errstat),
-		       STR_BUF_SIZE - 1);
+               strlcpy(err_str, (char*)snmp_errstring((*response)->errstat),
+		       STR_BUF_SIZE);
                *err_num = (int)(*response)->errstat;
 	       *err_ind = (*response)->errindex;
                status = (*response)->errstat;
@@ -1114,8 +971,7 @@ retry:
       case STAT_TIMEOUT:
       case STAT_ERROR:
 	  snmp_sess_error(ss, err_num, err_ind, &tmp_err_str);
-	  strncpy(err_str, tmp_err_str, STR_BUF_SIZE - 1);
-	  err_str[STR_BUF_SIZE - 1] = '\0';
+	  strlcpy(err_str, tmp_err_str, STR_BUF_SIZE);
          break;
 
       default:
@@ -1450,8 +1306,9 @@ netsnmp_create_session_v3(PyObject *self, PyObject *args)
 			     USM_AUTH_PROTO_SHA_LEN);
       session.securityAuthProtoLen = USM_AUTH_PROTO_SHA_LEN;
     } else if (!strcmp(auth_proto, "DEFAULT")) {
-      session.securityAuthProto = 
-	get_default_authtype(&session.securityAuthProtoLen);
+      const oid* a = get_default_authtype(&session.securityAuthProtoLen);
+      session.securityAuthProto
+        = snmp_duplicate_objid(a, session.securityAuthProtoLen);
     } else {
       if (verbose)
 	printf("error:snmp_new_v3_session:Unsupported authentication protocol(%s)\n", auth_proto);
@@ -1485,8 +1342,9 @@ netsnmp_create_session_v3(PyObject *self, PyObject *args)
 			     USM_PRIV_PROTO_AES_LEN);
       session.securityPrivProtoLen = USM_PRIV_PROTO_AES_LEN;
     } else if (!strcmp(priv_proto, "DEFAULT")) {
-      session.securityPrivProto = 
-	get_default_privtype(&session.securityPrivProtoLen);
+      const oid *p = get_default_privtype(&session.securityPrivProtoLen);
+      session.securityPrivProto
+        = snmp_duplicate_objid(p, session.securityPrivProtoLen);
     } else {
       if (verbose)
 	printf("error:snmp_new_v3_session:Unsupported privacy protocol(%s)\n", priv_proto);
@@ -1530,7 +1388,6 @@ netsnmp_create_session_tunneled(PyObject *self, PyObject *args)
   int  timeout;
   char *  sec_name;
   int     sec_level;
-  char *  sec_eng_id;
   char *  context_eng_id;
   char *  context;
   char *  our_identity;
@@ -1607,7 +1464,11 @@ netsnmp_create_session_tunneled(PyObject *self, PyObject *args)
 
   if (!ss)
       return NULL;
-  return Py_BuildValue("i", (int)ss);
+  /*
+   * Note: on a 64-bit system the statement below discards the upper 32 bits of
+   * "ss", which is most likely a bug.
+   */
+  return Py_BuildValue("i", (int)(uintptr_t)ss);
 }
 
 static PyObject *
@@ -1644,7 +1505,6 @@ netsnmp_get(PyObject *self, PyObject *args)
   int oid_arr_len = MAX_OID_LEN;
   int type;
   char type_str[MAX_TYPE_NAME_LEN];
-  int status;
   u_char str_buf[STR_BUF_SIZE], *str_bufp = str_buf;
   size_t str_buf_len = sizeof(str_buf);
   size_t out_len = 0;
@@ -1717,8 +1577,8 @@ netsnmp_get(PyObject *self, PyObject *args)
       }
     }
 
-    status = __send_sync_pdu(ss, pdu, &response, retry_nosuch, 
-			     err_str, &err_num, &err_ind);
+    __send_sync_pdu(ss, pdu, &response, retry_nosuch, err_str, &err_num,
+                    &err_ind);
     __py_netsnmp_update_session_errors(session, err_str, err_num, err_ind);
 
     /*
@@ -1769,8 +1629,8 @@ netsnmp_get(PyObject *self, PyObject *args)
 					       &out_len, 0, &buf_over,
 					       vars->name,vars->name_length);
 	if (_debug_level) 
-	  printf("netsnmp_get:str_bufp:%s:%d:%d\n",
-		 str_bufp,str_buf_len,out_len);
+            printf("netsnmp_get:str_bufp:%s:%d:%d\n", str_bufp,
+                   (int)str_buf_len, (int)out_len);
 
 	str_buf[sizeof(str_buf)-1] = '\0';
 
@@ -1786,15 +1646,14 @@ netsnmp_get(PyObject *self, PyObject *args)
 	
 	if (_debug_level) printf("netsnmp_get:str_buf:%s\n",str_buf);
 
-	__get_label_iid(str_buf, &tag, &iid, getlabel_flag);
+	__get_label_iid((char *) str_buf, &tag, &iid, getlabel_flag);
 
 	py_netsnmp_attr_set_string(varbind, "tag", tag, STRLEN(tag));
 	py_netsnmp_attr_set_string(varbind, "iid", iid, STRLEN(iid));
 
 	__get_type_str(type, type_str);
 
-	py_netsnmp_attr_set_string(varbind, "type", type_str, 
-				   STRLEN(type_str));
+	py_netsnmp_attr_set_string(varbind, "type", type_str, strlen(type_str));
 
 	PyObject *obj = value_to_pyobject(str_buf, sizeof(str_buf), vars, tp, type);
 	py_netsnmp_attr_set_pyobject(varbind, "val", obj);
@@ -1842,13 +1701,12 @@ netsnmp_getnext(PyObject *self, PyObject *args)
   int oid_arr_len = MAX_OID_LEN;
   int type;
   char type_str[MAX_TYPE_NAME_LEN];
-  int status;
   u_char str_buf[STR_BUF_SIZE], *str_bufp = str_buf;
   size_t str_buf_len = sizeof(str_buf);
   size_t out_len = 0;
   int buf_over = 0;
   char *tag;
-  char *iid;
+  char *iid = NULL;
   int getlabel_flag = NO_FLAGS;
   int verbose = py_netsnmp_verbose();
   int old_format;
@@ -1919,8 +1777,8 @@ netsnmp_getnext(PyObject *self, PyObject *args)
       }
     }
 
-    status = __send_sync_pdu(ss, pdu, &response, retry_nosuch, 
-			     err_str, &err_num, &err_ind);
+    __send_sync_pdu(ss, pdu, &response, retry_nosuch, err_str, &err_num,
+                    &err_ind);
     __py_netsnmp_update_session_errors(session, err_str, err_num, err_ind);
 
     /*
@@ -1980,7 +1838,7 @@ netsnmp_getnext(PyObject *self, PyObject *args)
 	  type = __translate_asn_type(vars->type);
 	}
 
-	__get_label_iid(str_buf, &tag, &iid, getlabel_flag);
+	__get_label_iid((char *) str_buf, &tag, &iid, getlabel_flag);
 
 	if (_debug_level) 
 	  printf("netsnmp_getnext: filling response: %s:%s\n", tag, iid);
@@ -1991,7 +1849,7 @@ netsnmp_getnext(PyObject *self, PyObject *args)
 	__get_type_str(type, type_str);
 
 	py_netsnmp_attr_set_string(varbind, "type", type_str, 
-				   STRLEN(type_str));
+				   strlen(type_str));
 
 	PyObject *obj = value_to_pyobject(str_buf, sizeof(str_buf), vars, tp, type);
 	py_netsnmp_attr_set_pyobject(varbind, "val", obj);
@@ -2038,10 +1896,10 @@ netsnmp_walk(PyObject *self, PyObject *args)
   netsnmp_pdu *newpdu;
   netsnmp_variable_list *vars, *oldvars;
   struct tree *tp;
-  oid **oid_arr;
-  int *oid_arr_len;
-  oid **oid_arr_broken_check;
-  int *oid_arr_broken_check_len;
+  oid **oid_arr = NULL;
+  int *oid_arr_len = NULL;
+  oid **oid_arr_broken_check = NULL;
+  int *oid_arr_broken_check_len = NULL;
   int type;
   char type_str[MAX_TYPE_NAME_LEN];
   int status;
@@ -2050,7 +1908,7 @@ netsnmp_walk(PyObject *self, PyObject *args)
   size_t out_len = 0;
   int buf_over = 0;
   char *tag;
-  char *iid;
+  char *iid = NULL;
   int getlabel_flag = NO_FLAGS;
   int verbose = py_netsnmp_verbose();
   int old_format;
@@ -2143,7 +2001,8 @@ netsnmp_walk(PyObject *self, PyObject *args)
       varlist_ind++;
     }
 
-    Py_DECREF(varlist_iter);
+    if (varlist_iter)
+        Py_DECREF(varlist_iter);
 
     if (PyErr_Occurred()) {
       /* propagate error */
@@ -2287,7 +2146,7 @@ netsnmp_walk(PyObject *self, PyObject *args)
                       type = __translate_asn_type(vars->type);
                   }
 
-                  __get_label_iid(str_buf, &tag, &iid, getlabel_flag);
+                  __get_label_iid((char *) str_buf, &tag, &iid, getlabel_flag);
 
                   if (_debug_level) printf("netsnmp_walk: filling response: %s:%s\n", tag, iid);
 
@@ -2297,7 +2156,7 @@ netsnmp_walk(PyObject *self, PyObject *args)
                   __get_type_str(type, type_str);
 
                   py_netsnmp_attr_set_string(varbind, "type", type_str,
-                                             STRLEN(type_str));
+                                             strlen(type_str));
 
                   PyObject *obj = value_to_pyobject(str_buf, sizeof(str_buf), vars, tp, type);
                   py_netsnmp_attr_set_pyobject(varbind, "val", obj);
@@ -2377,11 +2236,11 @@ netsnmp_getbulk(PyObject *self, PyObject *args)
   netsnmp_pdu *pdu, *response;
   netsnmp_variable_list *vars;
   struct tree *tp;
+  int len;
   oid *oid_arr;
   int oid_arr_len = MAX_OID_LEN;
   int type;
   char type_str[MAX_TYPE_NAME_LEN];
-  int status;
   u_char str_buf[STR_BUF_SIZE], *str_bufp = str_buf;
   size_t str_buf_len = sizeof(str_buf);
   size_t out_len = 0;
@@ -2457,8 +2316,8 @@ netsnmp_getbulk(PyObject *self, PyObject *args)
 	goto done;
       }
 
-      status = __send_sync_pdu(ss, pdu, &response, retry_nosuch, 
-			       err_str, &err_num, &err_ind);
+      __send_sync_pdu(ss, pdu, &response, retry_nosuch, err_str, &err_num,
+                      &err_ind);
       __py_netsnmp_update_session_errors(session, err_str, err_num, err_ind);
 
       /*
@@ -2528,7 +2387,7 @@ netsnmp_getbulk(PyObject *self, PyObject *args)
 	      type = __translate_asn_type(vars->type);
 	    }
 
-	    __get_label_iid(str_buf, &tag, &iid, getlabel_flag);
+	    __get_label_iid((char *) str_buf, &tag, &iid, getlabel_flag);
 
 	    py_netsnmp_attr_set_string(varbind, "tag", tag, STRLEN(tag));
 	    py_netsnmp_attr_set_string(varbind, "iid", iid, STRLEN(iid));
@@ -2536,7 +2395,7 @@ netsnmp_getbulk(PyObject *self, PyObject *args)
 	    __get_type_str(type, type_str);
 
 	    py_netsnmp_attr_set_string(varbind, "type", type_str, 
-				       STRLEN(type_str));
+				       strlen(type_str));
 
 	    PyObject *obj = value_to_pyobject(str_buf, sizeof(str_buf), vars, tp, type);
 	    py_netsnmp_attr_set_pyobject(varbind, "val", obj);
@@ -2579,7 +2438,8 @@ netsnmp_getbulk(PyObject *self, PyObject *args)
       /* propagate error */
       if (verbose)
 	printf("error: getbulk response processing: unknown python error\n");
-      Py_DECREF(val_tuple);
+      if (val_tuple)
+          Py_DECREF(val_tuple);
       val_tuple = NULL;
     }
   }
@@ -2682,14 +2542,15 @@ netsnmp_set(PyObject *self, PyObject *args)
 	if (type==TYPE_INTEGER && use_enums && tp && tp->enums) {
 	  for(ep = tp->enums; ep; ep = ep->next) {
 	    if (val && !strcmp(ep->label, val)) {
-	      strcpy(tmp_val_str, ep->value);
+              snprintf((char *) tmp_val_str, sizeof(tmp_val_str), "%d",
+                      ep->value);
 	      break;
 	    }
 	  }
 	}
 	len = (int)tmplen;
 	status = __add_var_val_str(pdu, oid_arr, oid_arr_len,
-				tmp_val_str, len, type);
+                                   (char *) tmp_val_str, len, type);
 
 	if (verbose && status == FAILURE)
 	  printf("error: set: adding variable/value to PDU\n");

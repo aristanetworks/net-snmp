@@ -1160,8 +1160,14 @@ snmpv3_generate_engineID(size_t * length)
 }                               /* end snmpv3_generate_engineID() */
 
 /**
- * Return the number of seconds since the SNMPv3 engine last incremented
- * engine_boots.
+ * Return the value of snmpEngineTime. According to RFC 3414 snmpEngineTime
+ * is a 31-bit counter. engineBoots must be incremented every time that
+ * counter wraps around.
+ *
+ * @see See also <a href="http://tools.ietf.org/html/rfc3414">RFC 3414</a>.
+ *
+ * @note It is assumed that this function is called at least once every
+ *   2**31 seconds.
  */
 u_long
 snmpv3_local_snmpEngineTime(void)
@@ -1170,10 +1176,16 @@ snmpv3_local_snmpEngineTime(void)
     netsnmp_feature_require(calculate_sectime_diff)
 #endif /* NETSNMP_FEATURE_CHECKING */
 
+    static uint32_t last_engineTime;
     struct timeval  now;
+    uint32_t engineTime;
 
     netsnmp_get_monotonic_clock(&now);
-    return calculate_sectime_diff(&now, &snmpv3starttime);
+    engineTime = calculate_sectime_diff(&now, &snmpv3starttime) & 0x7fffffffL;
+    if (engineTime < last_engineTime)
+        engineBoots++;
+    last_engineTime = engineTime;
+    return engineTime;
 }
 
 
@@ -1230,7 +1242,7 @@ getHwAddress(const char *networkDevice, /* e.g. "eth0", "eth1" */
     /*
      * copy the name of the net device we want to find the HW address for 
      */
-    strncpy(request.ifr_name, networkDevice, IFNAMSIZ - 1);
+    strlcpy(request.ifr_name, networkDevice, IFNAMSIZ);
     /*
      * Get the HW address 
      */
@@ -1245,7 +1257,7 @@ getHwAddress(const char *networkDevice, /* e.g. "eth0", "eth1" */
 #endif
 
 #ifdef NETSNMP_ENABLE_TESTING_CODE
-/** 
+/**
  * Set SNMPv3 engineBoots and start time.
  *
  * @note This function does not exist. Go away. It certainly should never be

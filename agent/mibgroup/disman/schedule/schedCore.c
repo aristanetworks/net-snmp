@@ -302,15 +302,14 @@ sched_nextTime( struct schedTable_entry *entry )
              entry->schedNextRun = now + entry->schedInterval;
         }
         DEBUGMSGTL(("disman:schedule:time", "periodic: (%ld) %s",
-                                  entry->schedNextRun,
-                           ctime(&entry->schedNextRun)));
+                    (long) entry->schedNextRun, ctime(&entry->schedNextRun)));
         break;
 
     case SCHED_TYPE_ONESHOT:
         if ( entry->schedLastRun ) {
             DEBUGMSGTL(("disman:schedule:time", "one-shot: expired (%ld) %s",
-                                  entry->schedNextRun,
-                           ctime(&entry->schedNextRun)));
+                        (long) entry->schedNextRun,
+                        ctime(&entry->schedNextRun)));
             return;
         }
         /* Fallthrough */
@@ -425,8 +424,7 @@ sched_nextTime( struct schedTable_entry *entry )
          */
         entry->schedNextRun = mktime( &next_tm );
         DEBUGMSGTL(("disman:schedule:time", "calendar: (%ld) %s",
-                                  entry->schedNextRun,
-                           ctime(&entry->schedNextRun)));
+                    (long) entry->schedNextRun, ctime(&entry->schedNextRun)));
         return;
 
     default:

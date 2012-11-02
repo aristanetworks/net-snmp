@@ -506,8 +506,7 @@ void
 snmp_set_detail(const char *detail_string)
 {
     if (detail_string != NULL) {
-        strncpy((char *) snmp_detail, detail_string, sizeof(snmp_detail));
-        snmp_detail[sizeof(snmp_detail) - 1] = '\0';
+        strlcpy((char *) snmp_detail, detail_string, sizeof(snmp_detail));
         snmp_detail_f = 1;
     }
 }
@@ -523,20 +522,22 @@ snmp_api_errstring(int snmp_errnumber)
 {
     const char     *msg = "";
     static char     msg_buf[SPRINT_MAX_LEN];
+
     if (snmp_errnumber >= SNMPERR_MAX && snmp_errnumber <= SNMPERR_GENERR) {
         msg = api_errors[-snmp_errnumber];
     } else if (snmp_errnumber != SNMPERR_SUCCESS) {
         msg = NULL;
     }
-    if (!msg)
+    if (!msg) {
 	snprintf(msg_buf, sizeof(msg_buf), "Unknown error: %d", snmp_errnumber);
-    else if (snmp_detail_f) {
+        msg_buf[sizeof(msg_buf)-1] = '\0';
+    } else if (snmp_detail_f) {
         snprintf(msg_buf, sizeof(msg_buf), "%s (%s)", msg, snmp_detail);
+        msg_buf[sizeof(msg_buf)-1] = '\0';
         snmp_detail_f = 0;
     } else {
-        strncpy(msg_buf, msg, sizeof(msg_buf));
+        strlcpy(msg_buf, msg, sizeof(msg_buf));
     }
-    msg_buf[sizeof(msg_buf)-1] = '\0';
 
     return (msg_buf);
 }
@@ -566,15 +567,17 @@ snmp_error(netsnmp_session * psess,
 	if (snmp_detail_f) {
             snprintf(buf, sizeof(buf), "%s (%s)", api_errors[-snmp_errnumber],
 		    snmp_detail);
+            buf[sizeof(buf)-1] = '\0';
 	    snmp_detail_f = 0;
 	}
 	else
-	    strncpy(buf, api_errors[-snmp_errnumber], sizeof(buf));
+	    strlcpy(buf, api_errors[-snmp_errnumber], sizeof(buf));
     } else {
-        if (snmp_errnumber)
+        if (snmp_errnumber) {
             snprintf(buf, sizeof(buf), "Unknown Error %d", snmp_errnumber);
+            buf[sizeof(buf)-1] = '\0';
+        }
     }
-    buf[sizeof(buf)-1] = '\0';
 
     /*
      * append a useful system errno interpretation. 
@@ -704,6 +707,8 @@ _init_snmp(void)
 
     netsnmp_ds_set_int(NETSNMP_DS_LIBRARY_ID, 
                        NETSNMP_DS_LIB_HEX_OUTPUT_LENGTH, 16);
+    netsnmp_ds_set_int(NETSNMP_DS_LIBRARY_ID, NETSNMP_DS_LIB_RETRIES,
+                       DEFAULT_RETRIES);
 
 #ifdef NETSNMP_USE_REVERSE_ASNENCODING
     netsnmp_ds_set_boolean(NETSNMP_DS_LIBRARY_ID, 
@@ -1280,6 +1285,7 @@ snmpv3_probe_contextEngineID_rfc5343(void *slp, netsnmp_session *session) {
     if (memdup(&pdu->contextEngineID, probeEngineID, probeEngineID_len) !=
         SNMPERR_SUCCESS) {
         snmp_log(LOG_ERR, "failed to clone memory for rfc5343 probe\n");
+        snmp_free_pdu(pdu);
         return SNMP_ERR_GENERR;
     }
     pdu->contextEngineIDLen = probeEngineID_len;
@@ -1390,7 +1396,7 @@ snmpv3_engineID_probe(struct session_list *slp,
     }
 
     /* see if there was any hooks to call after the engineID probing */
-    if (sptr->post_probe_engineid) {
+    if (sptr && sptr->post_probe_engineid) {
         status = (*sptr->post_probe_engineid)(slp, in_session);
         if (status != SNMPERR_SUCCESS)
             return 0;
@@ -5371,10 +5377,15 @@ _sess_process_packet(void *sessp, netsnmp_session * sp,
 	    if (rp->retries <= sp->retries) {
 	      snmp_resend_request(slp, rp, TRUE);
 	      break;
+	    } else {
+	      /* We're done with retries, so no longer waiting for a response */
+	      ((struct synch_state*)magic)->waiting = 0;
 	    }
 	  } else {
 	    if (SNMPV3_IGNORE_UNAUTH_REPORTS) {
 	      break;
+	    } else { /* Set the state to no longer be waiting, since we're done with retries */
+	      ((struct synch_state*)magic)->waiting = 0;
 	    }
 	  }
 
@@ -5387,8 +5398,8 @@ _sess_process_packet(void *sessp, netsnmp_session * sp,
 	    if (sp->securityEngineID == NULL) {
 	      /*
 	       * TODO FIX: recover after message callback *?
-	       * return -1;
-	       */
+               */
+	      return -1;
 	    }
 	    memcpy(sp->securityEngineID, pdu->securityEngineID,
 		   pdu->securityEngineIDLen);
@@ -5400,8 +5411,8 @@ _sess_process_packet(void *sessp, netsnmp_session * sp,
 	      if (sp->contextEngineID == NULL) {
 		/*
 		 * TODO FIX: recover after message callback *?
-		 * return -1;
 		 */
+                return -1;
 	      }
 	      memcpy(sp->contextEngineID,
 		     pdu->securityEngineID,
@@ -5914,7 +5925,7 @@ snmp_sess_read2(void *sessp, netsnmp_large_fd_set * fdset)
 }
 
 
-/*
+/**
  * Returns info about what snmp requires from a select statement.
  * numfds is the number of fds in the list that are significant.
  * All file descriptors opened for SNMP are OR'd into the fdset.
@@ -5935,54 +5946,43 @@ snmp_sess_read2(void *sessp, netsnmp_large_fd_set * fdset)
  *
  * snmp_select_info returns the number of open sockets.  (i.e. The number of
  * sessions open)
+ *
+ * @see See also snmp_sess_select_info2_flags().
  */
-
 int
-snmp_select_info(int *numfds,
-                 fd_set * fdset, struct timeval *timeout, int *block)
-    /*
-     * input:  set to 1 if input timeout value is undefined  
-     * set to 0 if input timeout value is defined    
-     * output: set to 1 if output timeout value is undefined 
-     * set to 0 if output rimeout vlaue id defined   
-     */
+snmp_select_info(int *numfds, fd_set *fdset, struct timeval *timeout,
+                 int *block)
 {
-    return snmp_sess_select_info((void *) 0, numfds, fdset, timeout,
-                                 block);
+    return snmp_sess_select_info(NULL, numfds, fdset, timeout, block);
 }
 
+/**
+ * @see See also snmp_sess_select_info2_flags().
+ */
 int
-snmp_select_info2(int *numfds,
-                  netsnmp_large_fd_set * fdset,
+snmp_select_info2(int *numfds, netsnmp_large_fd_set *fdset,
 		  struct timeval *timeout, int *block)
-    /*
-     * input:  set to 1 if input timeout value is undefined  
-     * set to 0 if input timeout value is defined    
-     * output: set to 1 if output timeout value is undefined 
-     * set to 0 if output rimeout vlaue id defined   
-     */
 {
-    return snmp_sess_select_info2((void *) 0, numfds, fdset, timeout,
-                                  block);
+    return snmp_sess_select_info2(NULL, numfds, fdset, timeout, block);
 }
 
-/*
- * Same as snmp_select_info, but works just one session. 
+/**
+ * @see See also snmp_sess_select_info2_flags().
  */
 int
-snmp_sess_select_info(void *sessp,
-                      int *numfds,
-                      fd_set * fdset, struct timeval *timeout, int *block)
+snmp_sess_select_info(void *sessp, int *numfds, fd_set *fdset,
+                      struct timeval *timeout, int *block)
 {
     return snmp_sess_select_info_flags(sessp, numfds, fdset, timeout, block,
                                        NETSNMP_SELECT_NOFLAGS);
 }
         
+/**
+ * @see See also snmp_sess_select_info2_flags().
+ */
 int
-snmp_sess_select_info_flags(void *sessp,
-                            int *numfds,
-                            fd_set * fdset, struct timeval *timeout, int *block,
-                            int flags)
+snmp_sess_select_info_flags(void *sessp, int *numfds, fd_set *fdset,
+                            struct timeval *timeout, int *block, int flags)
 {
   int rc;
   netsnmp_large_fd_set lfdset;
@@ -6000,47 +6000,67 @@ snmp_sess_select_info_flags(void *sessp,
   return rc;
 }
 
+/**
+ * @see See also snmp_sess_select_info2_flags().
+ */
 int
-snmp_sess_select_info2(void *sessp,
-                       int *numfds,
-                       netsnmp_large_fd_set * fdset,
+snmp_sess_select_info2(void *sessp, int *numfds, netsnmp_large_fd_set *fdset,
 		       struct timeval *timeout, int *block)
 {
     return snmp_sess_select_info2_flags(sessp, numfds, fdset, timeout, block,
                                         NETSNMP_SELECT_NOFLAGS);
 }
 
+/**
+ * Compute/update the arguments to be passed to select().
+ *
+ * @param[in]     sessp   Which sessions to process: either a pointer to a
+ *   specific session or NULL which means to process all sessions.
+ * @param[in,out] numfds  On POSIX systems one more than the the largest file
+ *   descriptor that is present in *fdset. On systems that use Winsock (MinGW
+ *   and MSVC), do not use the value written into *numfds.
+ * @param[in,out] fdset   A large file descriptor set to which all file
+ *   descriptors will be added that are associated with one of the examined
+ *   sessions.
+ * @param[in,out] timeout On input, if *block = 1, the maximum time the caller
+ *   will block while waiting for Net-SNMP activity. On output, if this function
+ *   has set *block to 0, the maximum time the caller is allowed to wait before
+ *   invoking the Net-SNMP processing functions (snmp_read(), snmp_timeout()
+ *   and run_alarms()). If this function has set *block to 1, *timeout won't
+ *   have been modified and no alarms are active.
+ * @param[in,out] block   On input, whether the caller prefers to block forever
+ *   when no alarms are active. On output, 0 means that no alarms are active
+ *   nor that there is a timeout pending for any of the processed sessions.
+ * @param[in]     flags   Either 0 or NETSNMP_SELECT_NOALARMS.
+ *
+ * @return Number of sessions processed by this function.
+ *
+ * @see See also agent_check_and_process() for an example of how to use this
+ *   function.
+ */
 int
-snmp_sess_select_info2_flags(void *sessp,
-                            int *numfds,
-                            netsnmp_large_fd_set * fdset,
-                            struct timeval *timeout, int *block, int flags)
+snmp_sess_select_info2_flags(void *sessp, int *numfds,
+                             netsnmp_large_fd_set * fdset,
+                             struct timeval *timeout, int *block, int flags)
 {
-    struct session_list *slptest = (struct session_list *) sessp;
     struct session_list *slp, *next = NULL;
     netsnmp_request_list *rp;
-    struct timeval  now, earliest, delta;
+    struct timeval  now, earliest, alarm_tm;
     int             active = 0, requests = 0;
     int             next_alarm = 0;
 
     timerclear(&earliest);
 
     /*
-     * For each request outstanding, add its socket to the fdset,
+     * For each session examined, add its socket to the fdset,
      * and if it is the earliest timeout to expire, mark it as lowest.
      * If a single session is specified, do just for that session.
      */
 
-    if (sessp) {
-        slp = slptest;
-    } else {
-        slp = Sessions;
-    }
-
     DEBUGMSGTL(("sess_select", "for %s session%s: ",
                 sessp ? "single" : "all", sessp ? "" : "s"));
 
-    for (; slp; slp = next) {
+    for (slp = sessp ? sessp : Sessions; slp; slp = next) {
         next = slp->next;
 
         if (slp->transport == NULL) {
@@ -6103,9 +6123,10 @@ snmp_sess_select_info2_flags(void *sessp,
     if (netsnmp_ds_get_boolean(NETSNMP_DS_LIBRARY_ID,
                                NETSNMP_DS_LIB_ALARM_DONT_USE_SIG) &&
         !(flags & NETSNMP_SELECT_NOALARMS)) {
-        next_alarm = get_next_alarm_delay_time(&delta);
-        DEBUGMSGT(("sess_select","next alarm %d.%06d sec\n",
-                   (int)delta.tv_sec, (int)delta.tv_usec));
+        next_alarm = netsnmp_get_next_alarm_time(&alarm_tm, &now);
+        if (next_alarm)
+            DEBUGMSGT(("sess_select","next alarm at %ld.%06ld sec\n",
+                       (long)alarm_tm.tv_sec, (long)alarm_tm.tv_usec));
     }
     if (next_alarm == 0 && requests == 0) {
         /*
@@ -6116,51 +6137,18 @@ snmp_sess_select_info2_flags(void *sessp,
         return active;
     }
 
-    /*
-     * * Now find out how much time until the earliest timeout.  This
-     * * transforms earliest from an absolute time into a delta time, the
-     * * time left until the select should timeout.
-     */
-    gettimeofday(&now, (struct timezone *) 0);
-    /*
-     * Now = now;
-     */
+    if (next_alarm &&
+        (!timerisset(&earliest) || timercmp(&alarm_tm, &earliest, <)))
+        earliest = alarm_tm;
 
-    if (next_alarm) {
-        delta.tv_sec += now.tv_sec;
-        delta.tv_usec += now.tv_usec;
-        while (delta.tv_usec >= 1000000) {
-            delta.tv_usec -= 1000000;
-            delta.tv_sec += 1;
-        }
-        if (!timerisset(&earliest) ||
-            ((earliest.tv_sec > delta.tv_sec) ||
-             ((earliest.tv_sec == delta.tv_sec) &&
-              (earliest.tv_usec > delta.tv_usec)))) {
-            earliest.tv_sec = delta.tv_sec;
-            earliest.tv_usec = delta.tv_usec;
-        }
-    }
-
-    if (earliest.tv_sec < now.tv_sec) {
-        DEBUGMSGT(("verbose:sess_select","timer overdue\n"));
-        earliest.tv_sec = 0;
-        earliest.tv_usec = 0;
-    } else if (earliest.tv_sec == now.tv_sec) {
-        earliest.tv_sec = 0;
-        earliest.tv_usec = (earliest.tv_usec - now.tv_usec);
-        if (earliest.tv_usec < 0) {
-            earliest.tv_usec = 100;
-        }
-        DEBUGMSGT(("verbose:sess_select","timer due *real* soon. %d usec\n",
-                   (int)earliest.tv_usec));
+    NETSNMP_TIMERSUB(&earliest, &now, &earliest);
+    if (earliest.tv_sec < 0) {
+        time_t overdue_ms = -(earliest.tv_sec * 1000 + earliest.tv_usec / 1000);
+        if (overdue_ms >= 10)
+            DEBUGMSGT(("verbose:sess_select","timer overdue by %ld ms\n",
+                       (long) overdue_ms));
+        timerclear(&earliest);
     } else {
-        earliest.tv_sec = (earliest.tv_sec - now.tv_sec);
-        earliest.tv_usec = (earliest.tv_usec - now.tv_usec);
-        if (earliest.tv_usec < 0) {
-            earliest.tv_sec--;
-            earliest.tv_usec = (1000000L + earliest.tv_usec);
-        }
         DEBUGMSGT(("verbose:sess_select","timer due in %d.%06d sec\n",
                    (int)earliest.tv_sec, (int)earliest.tv_usec));
     }

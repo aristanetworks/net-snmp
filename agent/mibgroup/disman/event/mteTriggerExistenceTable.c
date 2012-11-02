@@ -27,6 +27,7 @@ init_mteTriggerExistenceTable(void)
     static oid mteTExistTable_oid[]   = { 1, 3, 6, 1, 2, 1, 88, 1, 2, 4 };
     size_t     mteTExistTable_oid_len = OID_LENGTH(mteTExistTable_oid);
     netsnmp_handler_registration    *reg;
+    int        rc;
 
     /*
      * Ensure the (combined) table container is available...
@@ -61,7 +62,10 @@ init_mteTriggerExistenceTable(void)
     table_info->max_column = COLUMN_MTETRIGGEREXISTENCEEVENT;
 
     /* Register this using the (common) trigger_table_data container */
-    netsnmp_tdata_register(reg, trigger_table_data, table_info);
+    rc = netsnmp_tdata_register(reg, trigger_table_data, table_info);
+    if (rc != SNMPERR_SUCCESS)
+        return;
+
     netsnmp_handler_owns_table_info(reg->handler->next);
     DEBUGMSGTL(("disman:event:init", "Trigger Exist Table\n"));
 }
@@ -89,6 +93,9 @@ mteTriggerExistenceTable_handler(netsnmp_mib_handler *handler,
          */
     case MODE_GET:
         for (request = requests; request; request = request->next) {
+            if (request->processed)
+                continue;
+
             entry = (struct mteTrigger *) netsnmp_tdata_extract_entry(request);
             tinfo = netsnmp_extract_table_info(request);
 
@@ -97,8 +104,10 @@ mteTriggerExistenceTable_handler(netsnmp_mib_handler *handler,
              *   rows where the mteTriggerTest 'existence(0)' bit is set.
              * So skip entries where this isn't the case.
              */
-            if (!entry || !(entry->mteTriggerTest & MTE_TRIGGER_EXISTENCE ))
+            if (!entry || !(entry->mteTriggerTest & MTE_TRIGGER_EXISTENCE )) {
+                netsnmp_request_set_error(request, SNMP_NOSUCHINSTANCE);
                 continue;
+            }
 
             switch (tinfo->colnum) {
             case COLUMN_MTETRIGGEREXISTENCETEST:
@@ -139,6 +148,9 @@ mteTriggerExistenceTable_handler(netsnmp_mib_handler *handler,
          */
     case MODE_SET_RESERVE1:
         for (request = requests; request; request = request->next) {
+            if (request->processed)
+                continue;
+
             entry = (struct mteTrigger *) netsnmp_tdata_extract_entry(request);
             tinfo = netsnmp_extract_table_info(request);
 
@@ -212,6 +224,9 @@ mteTriggerExistenceTable_handler(netsnmp_mib_handler *handler,
 
     case MODE_SET_ACTION:
         for (request = requests; request; request = request->next) {
+            if (request->processed)
+                continue;
+
             entry = (struct mteTrigger *) netsnmp_tdata_extract_entry(request);
             if (!entry) {
                 /*
@@ -233,6 +248,9 @@ mteTriggerExistenceTable_handler(netsnmp_mib_handler *handler,
          *  (reasonably) safe to apply them in the Commit phase
          */
         for (request = requests; request; request = request->next) {
+            if (request->processed)
+                continue;
+
             entry = (struct mteTrigger *) netsnmp_tdata_extract_entry(request);
             tinfo = netsnmp_extract_table_info(request);
 

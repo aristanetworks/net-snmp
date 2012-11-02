@@ -51,6 +51,7 @@ netsnmp_feature_require(cert_util)
 #include <net-snmp/library/snmp_transport.h>
 #include <net-snmp/library/snmp_secmod.h>
 #include <net-snmp/library/read_config.h>
+#include <net-snmp/library/system.h>
 
 #define LOGANDDIE(msg) do { snmp_log(LOG_ERR, "%s\n", msg); return 0; } while(0)
 
@@ -105,12 +106,13 @@ int verify_callback(int ok, X509_STORE_CTX *ctx) {
             DEBUGMSGTL(("tls_x509:verify", "verify_callback called with: ok=%d ctx=%p depth=%d err=%i:%s\n", ok, ctx, depth, err, X509_verify_cert_error_string(err)));
             DEBUGMSGTL(("tls_x509:verify", "  accepting matching fp of self-signed certificate found in: %s\n",
                         cert->info.filename));
+            SNMP_FREE(fingerprint);
             return 1;
         } else {
             DEBUGMSGTL(("tls_x509:verify", "  no matching fp found\n"));
             /* log where we are and why called */
             snmp_log(LOG_ERR, "tls verification failure: ok=%d ctx=%p depth=%d err=%i:%s\n", ok, ctx, depth, err, X509_verify_cert_error_string(err));
-
+            SNMP_FREE(fingerprint);
             return 0;
         }
 
@@ -118,6 +120,7 @@ int verify_callback(int ok, X509_STORE_CTX *ctx) {
             (verify_info->flags & VRFY_PARENT_WAS_OK)) {
             DEBUGMSGTL(("tls_x509:verify", "verify_callback called with: ok=%d ctx=%p depth=%d err=%i:%s\n", ok, ctx, depth, err, X509_verify_cert_error_string(err)));
             DEBUGMSGTL(("tls_x509:verify", "  a parent was ok, so returning ok for this child certificate\n"));
+            SNMP_FREE(fingerprint);
             return 1; /* we'll check the hostname later at this level */
         }
     }
@@ -128,6 +131,7 @@ int verify_callback(int ok, X509_STORE_CTX *ctx) {
         DEBUGMSGTL(("tls_x509:verify", "verify_callback called with: ok=%d ctx=%p depth=%d err=%i:%s\n", ok, ctx, depth, err, X509_verify_cert_error_string(err)));
     DEBUGMSGTL(("tls_x509:verify", "  returning the passed in value of %d\n",
                 ok));
+    SNMP_FREE(fingerprint);
     return(ok);
 }
 
@@ -186,6 +190,7 @@ _netsnmp_tlsbase_verify_remote_fingerprint(X509 *remote_cert,
         }
     } else {
         DEBUGMSGTL(("tls_x509:verify", "No fingerprint for the remote entity available to verify\n"));
+        free(fingerprint);
         return NO_FINGERPRINT_AVAILABLE;
     }
 
@@ -262,7 +267,7 @@ netsnmp_tlsbase_verify_server_cert(SSL *ssl, _netsnmpTLSBaseData *tlsdata) {
                              *check_name && j < sizeof(buf)-1;
                              ++check_name, ++j ) {
                             if (isascii(*check_name))
-                                buf[j] = tolower(*check_name);
+                                buf[j] = tolower(0xFF & *check_name);
                         }
                         if (j < sizeof(buf))
                             buf[j] = '\0';
@@ -914,9 +919,8 @@ int netsnmp_tlsbase_wrapup_recv(netsnmp_tmStateReference *tmStateRef,
     /* RFC5953 Section 5.1.2 step 2: tmSecurityName */
     /* XXX: detect and throw out overflow secname sizes rather
        than truncating. */
-    strncpy(tmStateRef->securityName, tlsdata->securityName,
-            sizeof(tmStateRef->securityName)-1);
-    tmStateRef->securityName[sizeof(tmStateRef->securityName)-1] = '\0';
+    strlcpy(tmStateRef->securityName, tlsdata->securityName,
+            sizeof(tmStateRef->securityName));
     tmStateRef->securityNameLen = strlen(tmStateRef->securityName);
 
     /* RFC5953 Section 5.1.2 step 2: tmSessionID */
@@ -1080,6 +1084,7 @@ const char * _x509_get_error(int x509failvalue, const char *location) {
 #endif
     case X509_V_ERR_APPLICATION_VERIFICATION:
         reason = "X509_V_ERR_APPLICATION_VERIFICATION";
+        break;
     default:
         reason = "unknown failure code";
     }

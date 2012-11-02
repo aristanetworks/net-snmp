@@ -152,7 +152,7 @@ netsnmp_tlstcp_recv(netsnmp_transport *t, void *buf, int size,
         snmp_log(LOG_ERR,
                  "tlstcp received an invalid invocation with missing data\n");
         DEBUGMSGTL(("tlstcp", "recvfrom fd %d err %d (\"%s\")\n",
-                    t->sock, errno, strerror(errno)));
+                    (t ? t->sock : -1), errno, strerror(errno)));
         DEBUGMSGTL(("tlstcp", "  tdata = %p\n", t->data));
         return -1;
     }
@@ -248,8 +248,8 @@ netsnmp_tlstcp_recv(netsnmp_transport *t, void *buf, int size,
     */
 
     /* read the packet from openssl */
-    rc = SSL_read(tlsdata->ssl, buf, size);
-    while (rc <= 0) {
+    do {
+        rc = SSL_read(tlsdata->ssl, buf, size);
         if (rc == 0) {
             /* XXX closed connection */
             DEBUGMSGTL(("tlstcp", "remote side closed connection\n"));
@@ -257,24 +257,22 @@ netsnmp_tlstcp_recv(netsnmp_transport *t, void *buf, int size,
             SNMP_FREE(tmStateRef);
             return -1;
         }
-        rc = SSL_read(tlsdata->ssl, buf, size);
-    }
+        if (rc == -1) {
+            int err = SSL_get_error(tlsdata->ssl, rc);
+            if (err != SSL_ERROR_WANT_READ && err != SSL_ERROR_WANT_WRITE) {
+                /* error detected */
+                _openssl_log_error(rc, tlsdata->ssl, "SSL_read");
+                SNMP_FREE(tmStateRef);
+                return rc;
+            }
+        }
+        /* retry read for SSL_ERROR_WANT_READ || SSL_ERROR_WANT_WRITE */
+    } while (rc <= 0); 
 
     DEBUGMSGTL(("tlstcp", "received %d decoded bytes from tls\n", rc));
 
-    /* Check for errors */
-    if (rc == -1) {
-        if (SSL_get_error(tlsdata->ssl, rc) == SSL_ERROR_WANT_READ)
-            return -1; /* XXX: it's ok, but what's the right return? */
-
-        _openssl_log_error(rc, tlsdata->ssl, "SSL_read");
-        SNMP_FREE(tmStateRef);
-
-        return rc;
-    }
-
     /* log the packet */
-    {
+    DEBUGIF("tlstcp") {
         char *str = netsnmp_tlstcp_fmtaddr(t, NULL, 0);
         DEBUGMSGTL(("tlstcp",
                     "recvfrom fd %d got %d bytes (from %s)\n",
@@ -416,7 +414,7 @@ netsnmp_tlstcp_send(netsnmp_transport *t, void *buf, int size,
     /* If the first packet and we have no secname, then copy the
        important securityName data into the longer-lived session
        reference information. */
-    if ((tlsdata->flags | NETSNMP_TLSBASE_IS_CLIENT) &&
+    if ((tlsdata->flags & NETSNMP_TLSBASE_IS_CLIENT) &&
         !tlsdata->securityName && tmStateRef && tmStateRef->securityNameLen > 0)
         tlsdata->securityName = strdup(tmStateRef->securityName);
         
@@ -921,7 +919,6 @@ netsnmp_tlstcp_transport(const char *addr_string, int isserver)
     if (NULL == t) {
         return NULL;
     }
-    memset(t, 0, sizeof(netsnmp_transport));
 
     /* allocate our TLS specific data */
     if (NULL == (tlsdata = netsnmp_tlsbase_allocate_tlsdata(t, isserver)))
@@ -936,12 +933,13 @@ netsnmp_tlstcp_transport(const char *addr_string, int isserver)
     if (!isserver && tlsdata && addr_string) {
         /* search for a : */
         if (NULL != (cp = strrchr(addr_string, ':'))) {
-            strncpy(buf, addr_string, sizeof(buf)-1);
+            sprintf(buf, "%.*s",
+                    (int) SNMP_MIN(cp - addr_string, sizeof(buf) - 1),
+                    addr_string);
         } else {
             /* else the entire spec is a host name only */
-            strncpy(buf, addr_string, sizeof(buf)-1);
+            strlcpy(buf, addr_string, sizeof(buf));
         }
-        buf[sizeof(buf)-1] = '\0';
         tlsdata->their_hostname = strdup(buf);
     }
 
@@ -989,7 +987,7 @@ netsnmp_tlstcp_create_tstring(const char *str, int local,
         for(cp = str; *cp != '\0'; cp++) {
             /* if ALL numbers, it must be just a port */
             /* if it contains anything else, assume a host or ip address */
-            if (!isdigit(*cp)) {
+            if (!isdigit(0xFF & *cp)) {
                 isport = 0;
                 break;
             }

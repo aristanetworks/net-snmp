@@ -30,6 +30,9 @@
 #include <net-snmp/library/snmp_debug.h>
 #include <net-snmp/data_access/swrun.h>
 
+static long pagesize;
+static long sc_clk_tck;
+
 /* ---------------------------------------------------------------------
  */
 void
@@ -39,6 +42,8 @@ netsnmp_arch_swrun_init(void)
     extern int _swrun_max = NR_TASKS;   /* from <linux/tasks.h> */
 #endif
     
+    pagesize = getpagesize();
+    sc_clk_tck = sysconf(_SC_CLK_TCK);
     return;
 }
 
@@ -51,6 +56,7 @@ netsnmp_arch_swrun_container_load( netsnmp_container *container, u_int flags)
     struct dirent       *procentry_p;
     FILE                *fp;
     int                  pid, i;
+    unsigned long long   cpu;
     char                 buf[BUFSIZ], buf2[BUFSIZ], *cp;
     netsnmp_swrun_entry *entry;
     
@@ -127,32 +133,26 @@ netsnmp_arch_swrun_container_load( netsnmp_container *container, u_int flags)
         }
         fclose(fp);
 
-        if ( cp ) {
-            /*
-             *     argv[0]   is hrSWRunPath
-             */ 
-            entry->hrSWRunPath_len = snprintf(entry->hrSWRunPath,
-                                       sizeof(entry->hrSWRunPath)-1, "%s", buf);
-            /*
-             * Stitch together argv[1..] to construct hrSWRunParameters
-             */
-            cp = buf + entry->hrSWRunPath_len+1;
-            while ( 1 ) {
-                while (*cp)
-                    cp++;
-                if ( '\0' == *(cp+1))
-                    break;      /* '\0''\0' => End of command line */
-                *cp = ' ';
-            }
-            entry->hrSWRunParameters_len
-                = sprintf(entry->hrSWRunParameters, "%.*s",
-                          (int)sizeof(entry->hrSWRunParameters) - 1,
-                          buf + entry->hrSWRunPath_len + 1);
-        } else {
-            memcpy(entry->hrSWRunPath, entry->hrSWRunName, entry->hrSWRunName_len);
-            entry->hrSWRunPath_len       = entry->hrSWRunName_len;
-            entry->hrSWRunParameters_len = 0;
+        /*
+         *     argv[0]   is hrSWRunPath
+         */ 
+        entry->hrSWRunPath_len = snprintf(entry->hrSWRunPath,
+                                   sizeof(entry->hrSWRunPath)-1, "%s", buf);
+        /*
+         * Stitch together argv[1..] to construct hrSWRunParameters
+         */
+        cp = buf + entry->hrSWRunPath_len+1;
+        while ( 1 ) {
+            while (*cp)
+                cp++;
+            if ( '\0' == *(cp+1))
+                break;      /* '\0''\0' => End of command line */
+            *cp = ' ';
         }
+        entry->hrSWRunParameters_len
+            = sprintf(entry->hrSWRunParameters, "%.*s",
+                      (int)sizeof(entry->hrSWRunParameters) - 1,
+                      buf + entry->hrSWRunPath_len + 1);
  
         /*
          * XXX - No information regarding system processes vs applications
@@ -194,20 +194,21 @@ netsnmp_arch_swrun_container_load( netsnmp_container *container, u_int flags)
                    break;
         }
         for (i=11; i; i--) {   /* Skip STATUS + 10 fields */
-            while (*cp && ' ' != *(cp++))
+            while (' ' != *(++cp))
                 ;
         }
-        entry->hrSWRunPerfCPU  = atoi( cp );   /*  utime */
-        while (*cp && ' ' != *(cp++))		       /* Skip utime */
+        cpu  = atol( cp );                     /*  utime */
+        while ( ' ' != *(++cp))
             ;
-        entry->hrSWRunPerfCPU += atoi( cp );   /* +stime */
+        cpu += atol( cp );                     /* +stime */
+        entry->hrSWRunPerfCPU  = cpu * 100 / sc_clk_tck;
 
         for (i=9; i; i--) {   /* Skip stime + 8 fields */
-            while (*cp && ' ' != *(cp++))
+            while (' ' != *(++cp))
                 ;
         }
-        entry->hrSWRunPerfMem  = atoi( cp );   /*  rss */
-        entry->hrSWRunPerfMem *= (getpagesize()/1024);  /* in kB */
+        entry->hrSWRunPerfMem  = atol( cp );       /* rss   */
+        entry->hrSWRunPerfMem *= (pagesize/1024);  /* in kB */
         CONTAINER_INSERT(container, entry);
     }
     closedir( procdir );

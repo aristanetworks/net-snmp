@@ -13,6 +13,17 @@
 	information.
       </text>
       <steps>
+	<step type="system" title="Old Code">
+	  <text>
+	    This checks for old tarballs (and particularly unpacked
+	    distributions) which might confuse the later processing.
+	    If this step finds outstanding files you need to remove
+	    them before continuing!
+	  </text>
+	  <commands>
+	    <command expectfailure="1">find . -name 'net-snmp-5*' | egrep '^[^\?]'</command>
+	  </commands>
+	</step>
 	<step type="system" title="Setup Check">
 	  <text>
 	    This should show the last version number published in this
@@ -33,6 +44,15 @@
 	    should be labeled ".rcN" like 5.4.1.rc1.
 	  </text>
 	</step>
+	<step type="prompt" prompt="Enter the last version number:"
+	  title="Enter the last version number"
+	  parameter="LASTVERSION">
+	  <text>
+	    Please enter the last version number that the changelog should be
+            generated from.  This should be easy for a new release on a branch,
+            but may be more tricky for a main release.
+	  </text>
+	</step>
 	<step type="perl" title="Defining a second internal version string"
 	  mandatory="1">
 	  <perl>
@@ -41,11 +61,21 @@
 	      $self->{'parameters'}{'VERSIONTAGNAME'} =
     	          "v" . $self->{'parameters'}{'VERSION'};
 
+	      $self->{'parameters'}{'LASTVERSIONTAGNAME'} =
+    	          "v" . $self->{'parameters'}{'LASTVERSION'};
+
 	      # target version number (without preN/rcN)
 	      $self->{'parameters'}{'VERSIONTARGET'} =
     	          $self->{'parameters'}{'VERSION'};
-	      $self->{'parameters'}{'VERSIONTARGET'} =~ s/\.pre.*//;
-	      $self->{'parameters'}{'VERSIONTARGET'} =~ s/\.rc.*//;
+    	      if ( $self->{'parameters'}{'VERSIONTARGET'} =~ /\.pre.*/ ) {
+    	          $self->{'parameters'}{'VERSIONTARGET'} =~ s/\.pre.*//;
+    	          $self->{'parameters'}{'RELEASETYPE'} = "pre";
+    	      } elsif ( $self->{'parameters'}{'VERSIONTARGET'} =~ /\.rc.*/ ) {
+    	          $self->{'parameters'}{'VERSIONTARGET'} =~ s/\.rc.*//;
+    	          $self->{'parameters'}{'RELEASETYPE'} = "rc";
+    	      } else {
+    	          $self->{'parameters'}{'RELEASETYPE'} = "full";
+    	      }
 
 	      # version in floating point form for perl modules
               my ($major, $minor, $patch, $opps) =
@@ -59,6 +89,10 @@
 	      while(&lt;GITINFO&gt;) {
 		  if (/^\*\s+(.*)/) {
 		     $self->{'parameters'}{'BRANCHPATH'} = $1;
+		     my ($nextBranch);
+		     $nextBranch = &lt;GITINFO&gt;;
+		     $nextBranch =~ s/^\s+//;
+		     $self->{'parameters'}{'NEXTBRANCH'} = $nextBranch;
                      last;
                   }
               }
@@ -85,7 +119,7 @@
 	  <text>We need to make sure your code is up to date and
 	  matches the latest sources in this branch.</text>
 	  <commands>
-	    <command>git pull --rebase</command>
+	    <command>git pull</command>
 	  </commands>
 	</step>
 	<step type="system" stepname="update" title="Check for changes">
@@ -115,6 +149,7 @@
 	  </text>
 	  <steps>
 	    <step type="informational" pause="true"
+	      skipunless="'{RELEASETYPE}' eq 'pre'"
 	      stepname="version:manualedit" title="version:libtoolmanualedit">
 	      <text>
 		You may need to edit Makefile.top to update the library
@@ -237,12 +272,46 @@
 	    </step>
 	  </steps>
 	</step>
+        <step type="section" title="Handle dist/release">
+          <steps>
+	    <step type="system" skipunless="'{RELEASETYPE}' eq 'rc'">
+	      <text>Note in 'dist/release' that this branch is in release candidate mode
+	      </text>
+	      <commands>
+	        <command>git checkout V5-4-patches</command>
+	        <command>echo {BRANCHPATH} rc >> dist/release </command>
+	        <command ignoreerror="1">git commit -m "Release Candidate for {BRANCHPATH}" dist/release</command>
+	        <command>git checkout {BRANCHPATH} </command>
+	        <command>git merge V5-4-patches    </command>
+	        <command>git commit                </command>
+	      </commands>
+	    </step>
+	    <step type="system" skipif="'{RELEASETYPE}' eq 'rc'">
+	      <text>Ensure that 'dist/release' doesn't reference this branch
+	      </text>
+	      <commands>
+	        <command>git checkout V5-4-patches</command>
+	        <command>grep -v {BRANCHPATH} dist/release > dist/release.new </command>
+	        <command>mv dist/release.new dist/release </command>
+	        <command ignoreerror="1">git commit -m "{BRANCHPATH} out of Release Candidate" dist/release</command>
+	        <command>git checkout {BRANCHPATH} </command>
+	        <command>git merge V5-4-patches    </command>
+	        <command>git commit                </command>
+	      </commands>
+	    </step>
+          </steps>
+        </step>
 	<step type="system" stepname="docs:make" title="docs:make">
 	  <text>This step will create manual pages from doxygen
 	  instrumented code files.</text>
 	  <commands>
-	    <command>make docs</command>
-	    <command>make mancp</command>
+	    <command>
+	       if [ -f Makefile ]
+	       then
+	         make docs
+	         make mancp
+	       fi
+	    </command>
 	  </commands>
 	</step>
 	<step type="system" stepname="docs:update" title="docs:update">
@@ -287,7 +356,7 @@
 	  <text>First we need to clean the existing build tree and
 	  start from scratch.</text>
 	  <commands>
-	    <command>make distclean</command>
+	    <command>NETSNMP_DONT_CHECK_VERSION=1 make distclean</command>
 	  </commands>
 	</step>
 	<step type="system" stepname="build:configure" title="build:configure">
@@ -299,7 +368,7 @@
 	<step type="system" stepname="build:make" title="build:make">
 	  <text>Then we need to build the code</text>
 	  <commands>
-	    <command>make</command>
+	    <command>NETSNMP_DONT_CHECK_VERSION=1 make</command>
 	  </commands>
 	</step>
 	<step type="system" stepname="build:test" title="testing: default tests">
@@ -358,25 +427,22 @@
           <text>This step commits the dependency changes done in the
           previous step.</text>
 	  <commands>
-	    <command>git commit -m "make depend for {VERSION}" `find . -name Makefile.depend`</command>
+	    <command ignoreerror="1">git commit -m "make depend for {VERSION}" `find . -name Makefile.depend`</command>
 	  </commands>
 	</step>
-	<step type="system" stepname="changelog:svn2cl" title="changelog:svn2cl">
+	<step type="system" stepname="changelog:create" title="Creating a changelog update">
           <text>We need to extract the portions of the change logs
           committed to the repository.</text>
-	  <!-- XXX: git2cl needs to be truncated quite a bit rather than searching the whole history -->
-	  <!-- XXX: following branches properly may prove to be interesting -->
 	  <commands>
-	    <command>git2cl | head -10000 &gt; ChangeLog.add</command>
-	    <command>perl dist/changelogfix  &lt; ChangeLog.add &gt; ChangeLog.reallyadd</command>
+	    <command>git log --no-merges {LASTVERSIONTAGNAME}..HEAD &gt; ChangeLog.add</command>
 	  </commands>
 	</step>
 	<step type="informational" pause="true" stepname="changelog:manualedit" title="changelog:manualedit">
 	  <text>
 	    You need to manually insert the *relevent* portions of
-	    'ChangeLog.reallyadd' into the ChangeLog file.
+	    'ChangeLog.add' into the ChangeLog file.
 
-            I also suggest truncating ChangeLog.reallyadd to only contain
+            I also suggest truncating ChangeLog.add to only contain
             the *relevent* portions for this release, as this will make
             CHANGES.new2 and NEWS.new2 more accurate later on.
 
@@ -396,7 +462,7 @@
 	</step>
 	<step type="system" stepname="docs:newnews" title="docs:newnews">
 	  <commands>
-	    <command>perl dist/extractnews -c CHANGES.new2 -n NEWS.new2 ChangeLog.reallyadd</command>
+	    <command>perl dist/extractnews -c CHANGES.new2 -n NEWS.new2 ChangeLog.add</command>
 	  </commands>
 	</step>
 	<step type="informational" pause="true" stepname="docs:README-and-NEWS" title="docs:README">
@@ -410,14 +476,14 @@
 	</step>
 	<step prompt="true" type="system" stepname="docs:commit" title="docs:commit">
 	  <commands>
-	    <command>git commit -m "version update for {VERSION}" README NEWS CHANGES</command>
+	    <command ignoreerror="1">git commit -m "version update for {VERSION}" README NEWS CHANGES</command>
 	  </commands>
 	</step>
 	<step type="system" stepname="release:update" title="release:update">
 	  <text>One more git pull and status to make sure nothing
 	  odd exists in your source tree.  Please check the results!</text>
 	  <commands>
-	    <command>git pull --rebase</command>
+	    <command>git pull</command>
 	    <command>git status --porcelain</command>
 	  </commands>
 	</step>
@@ -482,6 +548,17 @@
 	    <command>gpg -u A77C5329 -a --detach-sign net-snmp-{VERSION}.zip</command>
 	  </commands>
 	</step>
+	<step type="command" name="release:nextbranch" title="Don't propagate code modifications"
+	      pause="0" mandatory="0">
+	  <text>
+	    Mark these code modifications as specific to this particular branch
+	  </text>
+	  <commands>
+	    <command>git checkout {NEXTBRANCH}</command>
+	    <command>git merge -s ours -m "Release {VERSION} specific changes" {BRANCHPATH}</command>
+	    <command>git checkout {BRANCHPATH}</command>
+	  </commands>
+	</step>
 	<step type="command" name="release:push" title="Push the code modifications"
 	      pause="0" mandatory="0">
 	  <text>
@@ -530,14 +607,24 @@
     <step type="section" title="Release the results">
       <text>Now we'll publish the results to the SF server</text>
       <steps>
-	<step pause="true" type="system" stepname="publish:rsync"
-	  title="rsync the new files">
+	<step pause="true" type="system" skipif="'{RELEASETYPE}' eq 'full'"
+	      stepname="publish:rsync" title="rsync the new files">
 	  <text>This will copy the results to the SF uploads directory
 	    in your account on frs.sourceforge.net.  The following command
 	    is just as an example - this script does *not* upload the
 	    files automatically.  You must do something like:</text>
 	  <commands>
 	    <command>echo rsync -v net-snmp-{VERSION}.tar.gz net-snmp-{VERSION}.tar.gz.asc net-snmp-{VERSION}.zip net-snmp-{VERSION}.zip.asc hardaker,net-snmp@frs.sourceforge.net:/home/frs/project/n/ne/net-snmp/net-snmp/{VERSIONTARGET}-pre-releases/</command>
+	  </commands>
+	</step>
+	<step pause="true" type="system" skipunless="'{RELEASETYPE}' eq 'full'"
+	      stepname="publish:rsync" title="rsync the new files">
+	  <text>This will copy the results to the SF uploads directory
+	    in your account on frs.sourceforge.net.  The following command
+	    is just as an example - this script does *not* upload the
+	    files automatically.  You must do something like:</text>
+	  <commands>
+	    <command>echo rsync -v net-snmp-{VERSION}.tar.gz net-snmp-{VERSION}.tar.gz.asc net-snmp-{VERSION}.zip net-snmp-{VERSION}.zip.asc hardaker,net-snmp@frs.sourceforge.net:/home/frs/project/n/ne/net-snmp/net-snmp/{VERSIONTARGET}/</command>
 	  </commands>
 	</step>
 	<step type="informational" stepname="publish:editrelease"
@@ -552,7 +639,8 @@
  -->
 	</step>
 	<step type="system" stepname="publish:editpatches"
-	title="Update the SF Official Patch tracker">
+	      skipunless="'{RELEASETYPE}' eq 'full'"
+	      title="Update the SF Official Patch tracker">
 	  <text>
 	    If this the final version of this release, then:
 	    Any official patches for the previous release should be re-prioritised to level 5.
@@ -595,7 +683,7 @@
 	    http://sourceforge.net/news/submit.php?group_id=12694
 	  </text>
 	  <commands>
-	    <command>firefox 'http://sourceforge.net/news/submit.php?group_id=12694'</command>
+	    <command>echo firefox 'http://sourceforge.net/news/submit.php?group_id=12694'</command>
 	  </commands>
 	</step>
 	<step type="informational" pause="1">
@@ -610,23 +698,23 @@
                        (one week after the source tarball is made available)
 	  </text>
 	</step>
-	<step type="informational" pause="1">
+	<step type="informational" skipunless="'{RELEASETYPE}' eq 'full'" pause="1">
 	  <text>Update the topic on the #Net-SNMP channel if this is a
 	    trunk based release.
 	  </text>
 	</step>
-	<step type="system" pause="1">
+	<step type="system" skipunless="'{RELEASETYPE}' eq 'full'" pause="1">
 	  <text>Update the freshmeat listing (Wes needs to do this):
 
 	    http://freshmeat.net/projects/net-snmp/
 	  </text>
 	  <commands>
-	    <command>firefox http://freshmeat.net/projects/net-snmp/</command>
+	    <command>echo firefox http://freshmeat.net/projects/net-snmp/</command>
 	  </commands>
 	</step>
       </steps>
     </step>
-    <step type="informational">
+    <step type="informational" skipunless="'{RELEASETYPE}' eq 'full'" pause="1">
       <text>
 	Advertise: NEWS upload to sf, publish on -announce, freshmeat,
 	and the GNU FSF directory

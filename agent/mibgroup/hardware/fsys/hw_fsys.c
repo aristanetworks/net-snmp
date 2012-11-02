@@ -3,6 +3,9 @@
 #include <net-snmp/net-snmp-includes.h>
 #include <net-snmp/agent/net-snmp-agent-includes.h>
 #include <net-snmp/agent/hardware/fsys.h>
+#ifdef HAVE_INTTYPES_H
+#include <inttypes.h>
+#endif
 
 netsnmp_feature_child_of(hw_fsys_get_container, netsnmp_unused)
 
@@ -174,9 +177,8 @@ netsnmp_fsys_by_path( char *path, int create_type )
      * ... so let's create a new one
      */
     sp = _fsys_create_entry();
-    if ( sp ) {
-        strncpy( sp->path, path, sizeof(sp->path) );
-    }
+    if (sp)
+        strlcpy(sp->path, path, sizeof(sp->path));
     return sp;
 }
 
@@ -217,9 +219,8 @@ netsnmp_fsys_by_device( char *device, int create_type )
      * ... so let's create a new one
      */
     sp = _fsys_create_entry();
-    if ( sp ) {
-        strncpy( sp->device, device, sizeof(sp->device) );
-    }
+    if (sp)
+        strlcpy(sp->device, device, sizeof(sp->device));
     return sp;
 }
 
@@ -242,7 +243,7 @@ _fsys_create_entry( void )
         sp->idx.oids[0] = ++_fsys_idx;
     }
 
-    DEBUGMSGTL(("fsys:new", "Create filesystem entry (index = %d\n", _fsys_idx));
+    DEBUGMSGTL(("fsys:new", "Create filesystem entry (index = %d)\n", _fsys_idx));
     CONTAINER_INSERT( _fsys_container, sp );
     return sp;
 }
@@ -319,21 +320,30 @@ netsnmp_fsys_avail( netsnmp_fsys_info *f) {
 #define INT32_MAX 0x7fffffff
 #endif
 
+#ifndef PRIu64
+#define PRIu64 "llu"
+#endif
+
 /* recalculate f->size_32, used_32, avail_32 and units_32 from f->size & comp.*/
 void
-netsnmp_fsys_calculate32( netsnmp_fsys_info *f)
+netsnmp_fsys_calculate32(netsnmp_fsys_info *f)
 {
     unsigned long long s = f->size;
-    unsigned long long u = f->units;
-    int factor = 0;
+    unsigned shift = 0;
+
     while (s > INT32_MAX) {
         s = s >> 1;
-        u = u << 1;
-        factor++;
+        shift++;
     }
 
     f->size_32 = s;
-    f->units_32 = u;
-    f->avail_32 = f->avail << factor;
-    f->used_32 = f->used << factor;
+    f->units_32 = f->units << shift;
+    f->avail_32 = f->avail >> shift;
+    f->used_32 = f->used >> shift;
+
+    DEBUGMSGTL(("fsys", "Results of 32-bit conversion: size %" PRIu64 " -> %lu;"
+		" units %" PRIu64 " -> %lu; avail %" PRIu64 " -> %lu;"
+                " used %" PRIu64 " -> %lu\n",
+		(uint64_t)f->size, f->size_32, (uint64_t)f->units, f->units_32,
+		(uint64_t)f->avail, f->avail_32, (uint64_t)f->used, f->used_32));
 }

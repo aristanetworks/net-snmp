@@ -83,27 +83,23 @@ void
 sa_update_entry(struct snmp_alarm *a)
 {
     if (!timerisset(&a->t_lastM)) {
-        struct timeval  t_now;
-
         /*
          * First call of sa_update_entry() for alarm a: set t_lastM and t_nextM.
          */
-        netsnmp_get_monotonic_clock(&t_now);
-        a->t_lastM = t_now;
-        NETSNMP_TIMERADD(&t_now, &a->t, &a->t_nextM);
+        netsnmp_get_monotonic_clock(&a->t_lastM);
+        NETSNMP_TIMERADD(&a->t_lastM, &a->t, &a->t_nextM);
     } else if (!timerisset(&a->t_nextM)) {
         /*
          * We've been called but not reset for the next call.  
          */
         if (a->flags & SA_REPEAT) {
-            if (a->t.tv_sec == 0 && a->t.tv_usec == 0) {
+            if (timerisset(&a->t)) {
+                NETSNMP_TIMERADD(&a->t_lastM, &a->t, &a->t_nextM);
+            } else {
                 DEBUGMSGTL(("snmp_alarm",
                             "update_entry: illegal interval specified\n"));
                 snmp_alarm_unregister(a->clientreg);
-                return;
             }
-
-            NETSNMP_TIMERADD(&a->t_lastM, &a->t, &a->t_nextM);
         } else {
             /*
              * Single time call, remove it.  
@@ -142,7 +138,7 @@ snmp_alarm_unregister(unsigned int clientreg)
         DEBUGMSGTL(("snmp_alarm", "unregistered alarm %d\n", 
 		    sa_ptr->clientreg));
         /*
-         * Note:  do not free the clientarg, its the clients responsibility 
+         * Note: do not free the clientarg, it's the client's responsibility 
          */
         free(sa_ptr);
     } else {
@@ -210,11 +206,7 @@ run_alarms(void)
      * call until all events are finally in the future again.  
      */
 
-    for (;;) {
-        a = sa_find_next();
-        if (a == NULL)
-            return;
-
+    while ((a = sa_find_next()) != NULL) {
         netsnmp_get_monotonic_clock(&t_now);
 
         if (timercmp(&a->t_nextM, &t_now, >))
@@ -227,10 +219,9 @@ run_alarms(void)
         DEBUGMSGTL(("snmp_alarm", "alarm %d completed\n", clientreg));
 
         a = sa_find_specific(clientreg);
-        if (a != NULL) {
+        if (a) {
             a->t_lastM = t_now;
-            a->t_nextM.tv_sec = 0;
-            a->t_nextM.tv_usec = 0;
+            timerclear(&a->t_nextM);
             a->flags &= ~SA_FIRED;
             sa_update_entry(a);
         } else {
@@ -248,6 +239,8 @@ alarm_handler(int a)
     run_alarms();
     set_an_alarm();
 }
+
+
 
 /**
  * Look up the time at which the next alarm will fire.
@@ -320,15 +313,13 @@ set_an_alarm(void)
 # ifdef HAVE_SETITIMER
         struct itimerval it;
 
-        it.it_value.tv_sec = delta.tv_sec;
-        it.it_value.tv_usec = delta.tv_usec;
-        it.it_interval.tv_sec = 0;
-        it.it_interval.tv_usec = 0;
+        it.it_value = delta;
+        timerclear(&it.it_interval);
 
         signal(SIGALRM, alarm_handler);
         setitimer(ITIMER_REAL, &it, NULL);
         DEBUGMSGTL(("snmp_alarm", "schedule alarm %d in %ld.%03ld seconds\n",
-                    nextalarm, delta.tv_sec, (delta.tv_usec / 1000)));
+                    nextalarm, (long) delta.tv_sec, (delta.tv_usec / 1000)));
 # else  /* HAVE_SETITIMER */
 #  ifdef SIGALRM
         signal(SIGALRM, alarm_handler);
@@ -444,8 +435,7 @@ snmp_alarm_register_hr(struct timeval t, unsigned int flags,
         return 0;
     }
 
-    (*s)->t.tv_sec = t.tv_sec;
-    (*s)->t.tv_usec = t.tv_usec;
+    (*s)->t = t;
     (*s)->flags = flags;
     (*s)->clientarg = cd;
     (*s)->thecallback = cb;
@@ -456,7 +446,7 @@ snmp_alarm_register_hr(struct timeval t, unsigned int flags,
 
     DEBUGMSGTL(("snmp_alarm",
                 "registered alarm %d, t = %ld.%03ld, flags=0x%02x\n",
-                (*s)->clientreg, (*s)->t.tv_sec, ((*s)->t.tv_usec / 1000),
+                (*s)->clientreg, (long) (*s)->t.tv_sec, ((*s)->t.tv_usec / 1000),
                 (*s)->flags));
 
     if (start_alarms) {
@@ -464,5 +454,36 @@ snmp_alarm_register_hr(struct timeval t, unsigned int flags,
     }
 
     return (*s)->clientreg;
+}
+
+/**
+ * This function resets an existing alarm.
+ *
+ * @param clientreg is a unique unsigned integer representing a registered
+ *	alarm which the client wants to unregister.
+ *
+ * @return 0 on success, -1 if the alarm was not found
+ *
+ * @see snmp_alarm_register
+ * @see snmp_alarm_register_hr
+ * @see snmp_alarm_unregister
+ */
+int
+snmp_alarm_reset(unsigned int clientreg)
+{
+    struct snmp_alarm *a;
+    struct timeval  t_now;
+    if ((a = sa_find_specific(clientreg)) != NULL) {
+        netsnmp_get_monotonic_clock(&t_now);
+        a->t_lastM.tv_sec = t_now.tv_sec;
+        a->t_lastM.tv_usec = t_now.tv_usec;
+        a->t_nextM.tv_sec = 0;
+        a->t_nextM.tv_usec = 0;
+        NETSNMP_TIMERADD(&t_now, &a->t, &a->t_nextM);
+        return 0;
+    }
+    DEBUGMSGTL(("snmp_alarm_reset", "alarm %d not found\n",
+                clientreg));
+    return -1;
 }
 /**  @} */

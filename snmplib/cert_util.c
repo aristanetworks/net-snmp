@@ -751,7 +751,6 @@ _certindex_add( const char *dirname, int i )
     if (SE_OK != rc) {
         snmp_log(LOG_ERR, "adding certindex dirname failed; "
                  "%d (%s) not added\n", i, dirname);
-        free(dirname_copy);
         return -1;
     }
 
@@ -791,7 +790,7 @@ _certindexes_load( void )
      * Create a list of which directory each file refers to
      */
     while ((file = readdir( dir ))) {
-        if ( !isdigit(file->d_name[0]))
+        if ( !isdigit(0xFF & file->d_name[0]))
             continue;
         i = atoi( file->d_name );
 
@@ -801,7 +800,6 @@ _certindexes_load( void )
         fp = fopen( filename, "r" );
         if ( !fp ) {
             DEBUGMSGT(("cert:index:load", "error opening index (%d)\n", i));
-            fclose(fp);
             continue;
         }
         cp = fgets( line, sizeof(line), fp );
@@ -1179,12 +1177,6 @@ _find_partner(netsnmp_cert *cert, netsnmp_key *key)
         return;
     }
 
-    snprintf(filename, sizeof(filename), "%s", key->info.filename);
-    pos = strrchr(filename, '.');
-    if (NULL == pos)
-        return;
-    *pos = 0;
-
     if(key) {
         if (key->cert) {
             DEBUGMSGT(("cert:partner", "key already has partner\n"));
@@ -1192,6 +1184,11 @@ _find_partner(netsnmp_cert *cert, netsnmp_key *key)
         }
         DEBUGMSGT(("9:cert:partner", "%s looking for partner near %s\n",
                    key->info.filename, key->info.dir));
+        snprintf(filename, sizeof(filename), "%s", key->info.filename);
+        pos = strrchr(filename, '.');
+        if (NULL == pos)
+            return;
+        *pos = 0;
 
         matching = _cert_find_subset_fn( filename, key->info.dir );
         if (!matching)
@@ -1220,6 +1217,11 @@ _find_partner(netsnmp_cert *cert, netsnmp_key *key)
         }
         DEBUGMSGT(("9:cert:partner", "%s looking for partner\n",
                    cert->info.filename));
+        snprintf(filename, sizeof(filename), "%s", cert->info.filename);
+        pos = strrchr(filename, '.');
+        if (NULL == pos)
+            return;
+        *pos = 0;
 
         matching = _key_find_subset(filename);
         if (!matching)
@@ -1714,7 +1716,7 @@ netsnmp_fp_lowercase_and_strip_colon(char *fp)
             break;
         }
         else
-            *pos = isalpha(*pos) ? tolower(*pos) : *pos;
+            *pos = isalpha(0xFF & *pos) ? tolower(0xFF & *pos) : *pos;
     }
     if (!*pos)
         return;
@@ -1723,7 +1725,7 @@ netsnmp_fp_lowercase_and_strip_colon(char *fp)
     for (++pos; *pos; ++pos) {
         if (':' == *pos)
             continue;
-        *dest++ = isalpha(*pos) ? tolower(*pos) : *pos;
+        *dest++ = isalpha(0xFF & *pos) ? tolower(0xFF & *pos) : *pos;
     }
     *dest = *pos; /* nul termination */
 }
@@ -2011,7 +2013,8 @@ netsnmp_cert_trust(SSL_CTX *ctx, netsnmp_cert *thiscert)
 {
     X509_STORE     *certstore;
     X509           *cert;
-    
+    char           *fingerprint;
+
     /* ensure all needed pieces are present */
     netsnmp_assert_or_msgreturn(NULL != thiscert, "NULL certificate passed in",
                                 SNMPERR_GENERR);
@@ -2033,10 +2036,11 @@ netsnmp_cert_trust(SSL_CTX *ctx, netsnmp_cert *thiscert)
                                 SNMPERR_GENERR);
 
     /* Put the certificate into the store */
+    fingerprint = netsnmp_openssl_cert_get_fingerprint(cert, -1);
     DEBUGMSGTL(("cert:trust",
                 "putting trusted cert %p = %s in certstore %p\n", cert,
-                netsnmp_openssl_cert_get_fingerprint(cert, -1),
-                certstore));
+                fingerprint, certstore));
+    SNMP_FREE(fingerprint);
     X509_STORE_add_cert(certstore, cert);
 
     return SNMPERR_SUCCESS;
@@ -2132,7 +2136,7 @@ _cert_find_fp(const char *fingerprint)
     if (NULL == fingerprint)
         return NULL;
 
-    strncpy(fp, fingerprint, sizeof(fp));
+    strlcpy(fp, fingerprint, sizeof(fp));
     netsnmp_fp_lowercase_and_strip_colon(fp);
 
     /** clear search key */
@@ -2222,7 +2226,7 @@ _reduce_subset_dir(netsnmp_void_array *matching, const char *directory)
      *
      * so we want to backup up on directory for compares..
      */
-    strncpy(dir,directory,sizeof(dir));
+    strlcpy(dir, directory, sizeof(dir));
     pos = strrchr(dir, '/');
     if (NULL == pos) {
         DEBUGMSGTL(("cert:subset:dir", "no '/' in directory %s\n", directory));
@@ -2690,7 +2694,7 @@ netsnmp_certToTSN_parse_common(char **line)
     tmp = buf;
     *line = read_config_read_octet_string(*line, (u_char **)&tmp, &len);
     tmp[len] = 0;
-    if (!isdigit(tmp[0])) {
+    if (!isdigit(0xFF & tmp[0])) {
         netsnmp_config_error("could not parse priority");
         return NULL;
     }
@@ -3050,8 +3054,8 @@ netsnmp_tlstmParams_add(snmpTlstmParams *stp)
                 stp->name));
 
     if (CONTAINER_INSERT(_tlstmParams, stp) != 0) {
-        netsnmp_tlstmParams_free(stp);
         snmp_log(LOG_ERR, "error inserting tlstmParams %s", stp->name);
+        netsnmp_tlstmParams_free(stp);
         return -1;
     }
 
@@ -3260,8 +3264,8 @@ netsnmp_tlstmAddr_add(snmpTlstmAddr *entry)
     DEBUGMSGTL(("tlstmAddr:add", "adding entry 0x%lx %s %s\n",
                 (u_long)entry, entry->name, entry->fingerprint));
     if (CONTAINER_INSERT(_tlstmAddr, entry) != 0) {
-        netsnmp_tlstmAddr_free(entry);
         snmp_log(LOG_ERR, "could not insert addr %s", entry->name);
+        netsnmp_tlstmAddr_free(entry);
         return -1;
     }
 
@@ -3314,10 +3318,7 @@ _parse_addr(const char *token, char *line)
     if (id_len)
         entry->identity = strdup(id);
 
-    if (netsnmp_tlstmAddr_add(entry) != 0)
-        netsnmp_tlstmAddr_free(entry);
-
-    return;
+    netsnmp_tlstmAddr_add(entry);
 }
 
 static char *

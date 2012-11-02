@@ -256,6 +256,13 @@ nssfpatchcommit() {
     
 
 nsrollup() {
+    fetch=1;
+
+    if [ "$1" = "--no-fetch" ] ; then
+	fetch=0
+        shift
+    fi
+
     if [ "$1" = "--merge" ] ; then
 	mergeop="merge"
     elif [ "$1" = "--rebase" ] ; then
@@ -269,8 +276,10 @@ nsrollup() {
 	return
     fi
 
-    $nsverbose Pulling all upstream branches
-    $nsecho git fetch --all
+    if [ $fetch == 1 ]; then
+      $nsverbose Pulling all upstream branches
+      $nsecho git fetch --all
+    fi
     
     nslastbranch=""
 
@@ -297,10 +306,10 @@ nsrollup() {
 	    fi
 
 	    $nsverbose rebasing our local changes on $branch
-	    git $mergeop origin/$branch
+	    MERGE_AUTOEDIT=no git $mergeop origin/$branch
 
 	    $nsverbose merging $nslastbranch into $branch
-	    $nsecho git merge --log $nslastbranch
+	    MERGE_AUTOEDIT=no $nsecho git merge --log $nslastbranch
 	    if [ $? != 0 ] ; then
 		echo ""
 		echo "---------------------------------------------"
@@ -360,6 +369,7 @@ nsrollup() {
 }
 
 nspull() {
+    nscurrentbranch=`git branch | egrep '^\*' | sed 's/^..//'`
     _ns_checkclean
     if [ $NSCLEAN != 1 ]; then
 	return
@@ -376,13 +386,15 @@ nspull() {
     git fetch --all
     for branch in $nsbranches ; do
 	git checkout $branch
-	git $mergeop origin/$branch
+	MERGE_AUTOEDIT=no git $mergeop origin/$branch
 	if [ $? != 0 ] ; then
-	    echo "git $mergop failed; please fix first"
+	    echo "git $mergeop failed; please fix first"
 	    return
 	fi
     done
+    git checkout $nscurrentbranch
 }
+
 nspush() {
     _ns_checkclean
     if [ $NSCLEAN != 1 ]; then

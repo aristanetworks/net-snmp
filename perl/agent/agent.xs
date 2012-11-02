@@ -215,13 +215,12 @@ handler_wrapper(netsnmp_mib_handler          *handler,
 MODULE = NetSNMP::agent		PACKAGE = NetSNMP::agent		
 
 void
-constant(sv,arg)
+constant(sv)
     PREINIT:
 	STRLEN		len;
     INPUT:
 	SV *		sv
 	char *		s = SvPV(sv, len);
-	int		arg
     INIT:
         int status;
         double value;
@@ -236,6 +235,13 @@ __agent_check_and_process(block = 1)
 	int block;
     CODE:
 	RETVAL = agent_check_and_process(block);
+    OUTPUT:
+	RETVAL
+
+int
+_uptime()
+    CODE:
+        RETVAL = netsnmp_get_agent_uptime();
     OUTPUT:
 	RETVAL
 
@@ -272,6 +278,8 @@ na_shutdown(me)
     SV *me;
     CODE:
     {
+        if (0)
+            printf("me = %p\n", me);
         snmp_shutdown("perl");
     }
 
@@ -284,6 +292,8 @@ na_errlog(me,value)
         char * stringptr;
     CODE:
     {
+        if (0)
+            printf("me = %p\n", me);
         stringptr = SvPV(value, stringlen);
         snmp_log(LOG_ERR, "%s", stringptr );
     }
@@ -340,13 +350,27 @@ nsahr_register(me)
         SV *me;
         PREINIT:
         netsnmp_handler_registration *reginfo;
+        handler_cb_data *cb_data = NULL;
         CODE:
             {
                 reginfo = (netsnmp_handler_registration *) SvIV(SvRV(me));
+                if (reginfo && reginfo->handler && reginfo->handler->myvoid)
+                    cb_data = (handler_cb_data *) (reginfo->handler->myvoid);
                 RETVAL = netsnmp_register_handler(reginfo);
                 if (!RETVAL) {
                     /* the agent now has a "reference" to this reg pointer */
                     SvREFCNT_inc(me);
+                } else {
+                    /*
+                     * The reginfo was freed by netsnmp_register_handler,
+                     * don't touch it in nsahr_DESTROY!
+                     */
+                    sv_setiv(SvRV(me), 0);
+                    if (cb_data) {
+                        /* And just free the callback. */
+                        SvREFCNT_dec(cb_data->perl_cb);
+                        free(cb_data);
+                    }
                 }
             }
     OUTPUT:

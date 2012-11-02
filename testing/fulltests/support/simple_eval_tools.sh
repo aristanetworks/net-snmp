@@ -38,7 +38,6 @@ OK_TO_SAVE_RESULT=1
 export OK_TO_SAVE_RESULT
 fi
 
-
 #
 # HEADER: returns a single line when SNMP_HEADERONLY mode and exits.
 #
@@ -114,7 +113,7 @@ SKIP() {
 }
 
 ISDEFINED() {
-	grep "^#define $1" ${builddir}/include/net-snmp/net-snmp-config.h ${builddir}/include/net-snmp/agent/mib_module_config.h ${builddir}/include/net-snmp/agent/agent_module_config.h > /dev/null
+	grep "^#define $1 " ${builddir}/include/net-snmp/net-snmp-config.h ${builddir}/include/net-snmp/agent/mib_module_config.h ${builddir}/include/net-snmp/agent/agent_module_config.h > /dev/null
 }
 
 SKIPIFNOT() {
@@ -131,7 +130,7 @@ VERIFY() {	# <path_to_file(s)>
 	local	missingfiles=
 
 	for f in $*; do
-		[ -e "$f" ] && continue
+		[ -f "$f" ] && continue
 		echo "FAILED: Cannot find file \"$f\"."
 		missingfiles=true
 	done
@@ -148,7 +147,7 @@ NEWOUTPUTFILE() {
 #
 STARTTEST() {
         NEWOUTPUTFILE
-	[ ! -e "$junkoutputfile" ] && {
+	[ ! -f "$junkoutputfile" ] && {
 		touch $junkoutputfile
 		return
 	}
@@ -365,7 +364,7 @@ ISRUNNING() {
 # Echo a command that asks the process with pid $1 to stop.
 ECHOSENDSIGTERM() {
     if [ "x$OSTYPE" = "xmsys" ]; then
-        echo kill.exe $1
+        echo pskill.exe $1
     else
         echo kill -TERM $1
     fi
@@ -374,7 +373,7 @@ ECHOSENDSIGTERM() {
 # Echo a command that stops the process with pid $1 forcibly.
 ECHOSENDSIGKILL() {
     if [ "x$OSTYPE" = "xmsys" ]; then
-        echo kill.exe $1
+        echo pskill.exe $1
     else
         echo kill -KILL $1
     fi
@@ -413,7 +412,7 @@ WAITFORTRAPD() {
 
 # Wait until pattern "$1" appears in file "$2".
 WAITFOR() {
-    WAITFORCOND grep -q "$1" "$2" "2>/dev/null"
+    WAITFORCOND grep "$1" "$2" ">/dev/null" "2>&1"
 }
 
 GOOD() {
@@ -456,7 +455,7 @@ CHECKANDDIE() {
 # Returns: Count of matched lines.
 #
 CHECKEXACT() {	# <pattern_to_match_exactly>
-	rval=`grep -wc "$*" "$junkoutputfile" 2>/dev/null`
+	rval=`egrep -c "^$*\$|^$*[^a-zA-Z0-9_]|[^a-zA-Z0-9_]$*\$|[^a-zA-Z0-9_]$*[^a-zA-Z0-9_]" "$junkoutputfile" 2>/dev/null`
 	snmp_last_test_result=$rval
 	EXPECTRESULT 1  # default
 	return $rval
@@ -489,7 +488,6 @@ CONFIGAPP() {
 #
 # common to STARTAGENT and STARTTRAPD
 # log command to "invoked" file
-# delay after command to allow for settle
 #
 STARTPROG() {
     if [ "x$DYNAMIC_ANALYZER" != "x" ]; then
@@ -537,6 +535,7 @@ STARTAGENT() {
         PORT_SPEC="${SNMP_TRANSPORT_SPEC}:${SNMP_TEST_DEST}${PORT_SPEC}"
     fi
     STARTPROG
+    WAITFORCOND test -f $SNMP_SNMPD_PID_FILE
     WAITFORAGENT "NET-SNMP version"
 }
 
@@ -551,6 +550,7 @@ STARTTRAPD() {
         PORT_SPEC="${SNMP_TRANSPORT_SPEC}:${SNMP_TEST_DEST}${PORT_SPEC}"
     fi
     STARTPROG
+    WAITFORCOND test -f $SNMP_SNMPTRAPD_PID_FILE
     WAITFORTRAPD "NET-SNMP version"
 }
 
@@ -559,7 +559,7 @@ STARTTRAPD() {
 HUPPROG() {
     if [ -f $1 ]; then
         if [ "x$OSTYPE" = "xmsys" ]; then
-          COMMAND='echo "Skipping SIGHUP (not supported by kill.exe on MinGW)"'
+          COMMAND='echo "Skipping SIGHUP (not possible with MinGW)"'
         else
           COMMAND="kill -HUP `cat $1`"
         fi
@@ -595,7 +595,10 @@ STOPPROG() {
 	echo "$COMMAND ($1)" >> $SNMP_TMPDIR/invoked
 	VERBOSE_OUT 0 "$COMMAND ($1)"
         $COMMAND >/dev/null 2>&1
-        if [ "x$OSTYPE" != "xmsys" ]; then
+        if [ "x$OSTYPE" = "xmsys" ]; then
+            # Wait until $pid and its parent have stopped.
+            sleep 1
+        else
             WAITFORNOTCOND "ISRUNNING $pid"
         fi
     fi

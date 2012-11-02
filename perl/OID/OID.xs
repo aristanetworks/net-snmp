@@ -125,7 +125,7 @@ int flag;
           break;
 
         case ASN_BIT_STR:
-            snprint_bitstring(buf, sizeof(buf), var, NULL, NULL, NULL);
+            snprint_bitstring(buf, buf_len, var, NULL, NULL, NULL);
             len = strlen(buf);
             break;
 
@@ -173,13 +173,12 @@ nso_newptr(initstring)
         RETVAL
 
 void
-constant(sv,arg)
+constant(sv)
     PREINIT:
 	STRLEN		len;
     INPUT:
 	SV *		sv
 	char *		s = SvPV(sv, len);
-	int		arg
     INIT:
         int status;
         double value;

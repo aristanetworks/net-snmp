@@ -713,7 +713,6 @@ traceRouteProbeHistoryTable_delLast(struct traceRouteCtlTable_data
 {
     struct header_complex_index *hciptr2 = NULL;
     struct header_complex_index *hcilast = NULL;
-    struct traceRouteProbeHistoryTable_data *StorageDel = NULL;
     struct traceRouteProbeHistoryTable_data *StorageTmp = NULL;
     netsnmp_variable_list *vars = NULL;
     oid             newoid[MAX_OID_LEN];
@@ -745,9 +744,7 @@ traceRouteProbeHistoryTable_delLast(struct traceRouteCtlTable_data
 
         }
     }
-    StorageDel =
-        header_complex_extract_entry(&traceRouteProbeHistoryTableStorage,
-                                     hcilast);
+    header_complex_extract_entry(&traceRouteProbeHistoryTableStorage, hcilast);
     DEBUGMSGTL(("traceRouteProbeHistoryTable",
                 "delete the last one success!\n"));
     vars = NULL;
@@ -1353,7 +1350,6 @@ int
 traceRouteResultsTable_del(struct traceRouteCtlTable_data *thedata)
 {
     struct header_complex_index *hciptr2 = NULL;
-    struct traceRouteResultsTable_data *StorageDel = NULL;
     netsnmp_variable_list *vars = NULL;
     oid             newoid[MAX_OID_LEN];
     size_t          newoid_len = 0;
@@ -1368,9 +1364,8 @@ traceRouteResultsTable_del(struct traceRouteCtlTable_data *thedata)
          hciptr2 = hciptr2->next) {
         if (snmp_oid_compare(newoid, newoid_len, hciptr2->name, newoid_len)
             == 0) {
-            StorageDel =
-                header_complex_extract_entry
-                (&traceRouteResultsTableStorage, hciptr2);
+            header_complex_extract_entry(&traceRouteResultsTableStorage,
+                                         hciptr2);
             DEBUGMSGTL(("traceRouteResultsTable", "delete  success!\n"));
 
         }
@@ -1386,7 +1381,6 @@ int
 traceRouteProbeHistoryTable_del(struct traceRouteCtlTable_data *thedata)
 {
     struct header_complex_index *hciptr2 = NULL;
-    struct traceRouteProbeHistoryTable_data *StorageDel = NULL;
     netsnmp_variable_list *vars = NULL;
     oid             newoid[MAX_OID_LEN];
     size_t          newoid_len = 0;
@@ -1402,9 +1396,8 @@ traceRouteProbeHistoryTable_del(struct traceRouteCtlTable_data *thedata)
          hciptr2 = hciptr2->next) {
         if (snmp_oid_compare(newoid, newoid_len, hciptr2->name, newoid_len)
             == 0) {
-            StorageDel =
-                header_complex_extract_entry
-                (&traceRouteProbeHistoryTableStorage, hciptr2);
+            header_complex_extract_entry(&traceRouteProbeHistoryTableStorage,
+                                         hciptr2);
             DEBUGMSGTL(("traceRouteProbeHistoryTable",
                         "delete  success!\n"));
 
@@ -1419,7 +1412,6 @@ int
 traceRouteHopsTable_del(struct traceRouteCtlTable_data *thedata)
 {
     struct header_complex_index *hciptr2 = NULL;
-    struct traceRouteHopsTable_data *StorageDel = NULL;
     netsnmp_variable_list *vars = NULL;
     oid             newoid[MAX_OID_LEN];
     size_t          newoid_len = 0;
@@ -1435,9 +1427,7 @@ traceRouteHopsTable_del(struct traceRouteCtlTable_data *thedata)
          hciptr2 = hciptr2->next) {
         if (snmp_oid_compare(newoid, newoid_len, hciptr2->name, newoid_len)
             == 0) {
-            StorageDel =
-                header_complex_extract_entry(&traceRouteHopsTableStorage,
-                                             hciptr2);
+            header_complex_extract_entry(&traceRouteHopsTableStorage, hciptr2);
             DEBUGMSGTL(("traceRouteHopsTable", "delete  success!\n"));
 
         }
@@ -3210,8 +3200,7 @@ write_traceRouteCtlAdminStatus(int action,
                                         SA_REPEAT, run_traceRoute,
                                         StorageTmp);
             else
-                StorageTmp->timer_id = snmp_alarm_register(1, (int) NULL,
-                                                           run_traceRoute,
+                StorageTmp->timer_id = snmp_alarm_register(1, 0, run_traceRoute,
                                                            StorageTmp);
 
         } else if (StorageTmp->traceRouteCtlAdminStatus == 2
@@ -4041,8 +4030,7 @@ write_traceRouteCtlRowStatus(int action,
                                             StorageTmp);
                 else
                     StorageTmp->timer_id =
-                        snmp_alarm_register(1, (int) NULL, run_traceRoute,
-                                            StorageTmp);
+                        snmp_alarm_register(1, 0, run_traceRoute, StorageTmp);
 
             }
 
@@ -4924,6 +4912,8 @@ run_traceRoute(unsigned int clientreg, void *clientarg)
 
         }
 
+        close(sndsock);
+
         if (flag == 1) {
             DEBUGMSGTL(("traceRouteProbeHistoryTable", "path changed!\n"));
             send_traceRoute_trap(item, traceRoutePathChange,
@@ -5556,6 +5546,8 @@ run_traceRoute(unsigned int clientreg, void *clientarg)
 
         }
 
+        close(sndsock);
+
         if (flag == 1) {
             printf("path changed!\n");
             send_traceRoute_trap(item, traceRoutePathChange,
@@ -6105,7 +6097,7 @@ ifaddrlist(register struct ifaddrlist **ipaddrp, register char *errbuf)
 #ifdef HAVE_SOCKADDR_SA_LEN
     register int    n;
 #endif
-    register struct ifreq *ifrp, *ifend, *ifnext, *mp;
+    register struct ifreq *ifrp, *ifend, *ifnext;
     register struct sockaddr_in *sin;
     register struct ifaddrlist *al;
     struct ifconf   ifc;
@@ -6137,7 +6129,6 @@ ifaddrlist(register struct ifaddrlist **ipaddrp, register char *errbuf)
     ifend = (struct ifreq *) ((char *) ibuf + ifc.ifc_len);
 
     al = ifaddrlist;
-    mp = NULL;
     nipaddr = 0;
     for (; ifrp < ifend; ifrp = ifnext) {
 #ifdef HAVE_SOCKADDR_SA_LEN
@@ -6157,7 +6148,7 @@ ifaddrlist(register struct ifaddrlist **ipaddrp, register char *errbuf)
          * SIOCGIFFLAGS stomps over it because the requests
          * are returned in a union.)
          */
-        strncpy(ifr.ifr_name, ifrp->ifr_name, sizeof(ifr.ifr_name));
+        strlcpy(ifr.ifr_name, ifrp->ifr_name, sizeof(ifr.ifr_name));
         if (ioctl(fd, SIOCGIFFLAGS, (char *) &ifr) < 0) {
             if (errno == ENXIO)
                 continue;
@@ -6174,9 +6165,7 @@ ifaddrlist(register struct ifaddrlist **ipaddrp, register char *errbuf)
         if ((ifr.ifr_flags & IFF_UP) == 0)
             continue;
 
-
-        (void) strncpy(device, ifr.ifr_name, sizeof(ifr.ifr_name));
-        device[sizeof(device) - 1] = '\0';
+        sprintf(device, "%.*s", (int) sizeof(ifr.ifr_name), ifr.ifr_name);
 #ifdef sun
         /*
          * Ignore sun virtual interfaces 

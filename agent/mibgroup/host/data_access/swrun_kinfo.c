@@ -44,7 +44,8 @@
 #include <net-snmp/library/container.h>
 #include <net-snmp/library/snmp_debug.h>
 #include <net-snmp/data_access/swrun.h>
-#include "kernel.h"
+
+extern kvm_t *kd;
 
 
 #if defined(freebsd5) && __FreeBSD_version >= 500014
@@ -158,6 +159,8 @@ netsnmp_arch_swrun_container_load( netsnmp_container *container, u_int flags)
     }
 #if HAVE_KVM_GETPROC2
     proc_table = kvm_getproc2(kd, KERN_PROC_ALL, 0, sizeof(struct kinfo_proc2), &nprocs );
+#elif defined(KERN_PROC_PROC)
+    proc_table = kvm_getprocs(kd, KERN_PROC_PROC, 0, &nprocs );
 #else
     proc_table = kvm_getprocs(kd, KERN_PROC_ALL, 0, &nprocs );
 #endif
@@ -230,13 +233,14 @@ netsnmp_arch_swrun_container_load( netsnmp_container *container, u_int flags)
                                 ? 3  /* device driver    */
                                 : 2  /* operating system */
                                )
+                             : 4  /*  application     */
 #else
                              ? 2  /* operating system */
-#endif
                              : 4  /*  application     */
+#endif
                              ;
 
-#ifdef netbsdelf5
+#ifdef netbsd5
         switch (proc_table[i].SWRUN_K_STAT) {
 	case LSONPROC:
         case LSRUN:   entry->hrSWRunStatus = HRSWRUNSTATUS_RUNNING;
@@ -251,42 +255,39 @@ netsnmp_arch_swrun_container_load( netsnmp_container *container, u_int flags)
         case LSZOMB:  entry->hrSWRunStatus = HRSWRUNSTATUS_INVALID;
 		      break;
         default:   
-		      snmp_log(LOG_ERR, "Bad process status %c (0x%x)\n", proc_table[i].SWRUN_K_STAT, proc_table[i].SWRUN_K_STAT);
 		      entry->hrSWRunStatus = HRSWRUNSTATUS_INVALID;
+		      snmp_log(LOG_ERR, "Bad process status %c (0x%x)\n", proc_table[i].SWRUN_K_STAT, proc_table[i].SWRUN_K_STAT);
                       break;
         }
 #else
-        switch (proc_table[i].SWRUN_K_STAT) {
+        switch (proc_table[i].SWRUN_K_STAT & 0xFF) {
+        case SONPROC:
         case SRUN:    entry->hrSWRunStatus = HRSWRUNSTATUS_RUNNING;
                       break;
         case SSLEEP:
         case SWAIT:   entry->hrSWRunStatus = HRSWRUNSTATUS_RUNNABLE;
                       break;
+        case SIDL:
         case SSTOP:
         case SLOCK:   entry->hrSWRunStatus = HRSWRUNSTATUS_NOTRUNNABLE;
                       break;
-        case SIDL:
-        case SZOMB:
-        default:      entry->hrSWRunStatus = HRSWRUNSTATUS_INVALID;
+
+        case SDEAD:
+        case SZOMB:   entry->hrSWRunStatus = HRSWRUNSTATUS_INVALID;   /* i.e. "not loaded" */
+                      break;
+
+        default:      entry->hrSWRunStatus = HRSWRUNSTATUS_INVALID;   /* Actually invalid  */
 		      snmp_log(LOG_ERR, "Bad process status %c (0x%x)\n", proc_table[i].SWRUN_K_STAT, proc_table[i].SWRUN_K_STAT);
                       break;
         }
 #endif
         
 #if defined(freebsd5) && __FreeBSD_version >= 500014
-# ifdef NOT_DEFINED
-   Apparently following these pointers triggers a SIG10 error
-
-        entry->hrSWRunPerfCPU  = proc_table[i].ki_paddr->p_uticks;
-        entry->hrSWRunPerfCPU += proc_table[i].ki_paddr->p_sticks;
-        entry->hrSWRunPerfCPU += proc_table[i].ki_paddr->p_iticks;
-        entry->hrSWRunPerfMem  = proc_table[i].ki_vmspace->vm_tsize;
-        entry->hrSWRunPerfMem += proc_table[i].ki_vmspace->vm_ssize;
-        entry->hrSWRunPerfMem += proc_table[i].ki_vmspace->vm_dsize;
-        entry->hrSWRunPerfMem *= (getpagesize()/1024);  /* in kB */
-# endif
-        entry->hrSWRunPerfCPU  = proc_table[i].ki_runtime / 100000;
-        entry->hrSWRunPerfMem  = proc_table[i].ki_size / 1024;;
+         entry->hrSWRunPerfCPU  = (proc_table[i].ki_rusage.ru_utime.tv_sec*1000000 + proc_table[i].ki_rusage.ru_utime.tv_usec) / 10000;
+	 entry->hrSWRunPerfCPU += (proc_table[i].ki_rusage.ru_stime.tv_sec*1000000 + proc_table[i].ki_rusage.ru_stime.tv_usec) / 10000;
+	 entry->hrSWRunPerfCPU += (proc_table[i].ki_rusage_ch.ru_utime.tv_sec*1000000 + proc_table[i].ki_rusage_ch.ru_utime.tv_usec) / 10000;
+	 entry->hrSWRunPerfCPU += (proc_table[i].ki_rusage_ch.ru_stime.tv_sec*1000000 + proc_table[i].ki_rusage_ch.ru_stime.tv_usec) / 10000;
+	 entry->hrSWRunPerfMem  = proc_table[i].ki_rssize * (getpagesize()/1024);  /* in kB */
 #elif defined(HAVE_KVM_GETPROC2)
         /*
          * newer NetBSD, OpenBSD
@@ -294,9 +295,7 @@ netsnmp_arch_swrun_container_load( netsnmp_container *container, u_int flags)
         entry->hrSWRunPerfCPU  = proc_table[i].p_uticks;
         entry->hrSWRunPerfCPU += proc_table[i].p_sticks;
         entry->hrSWRunPerfCPU += proc_table[i].p_iticks;
-        entry->hrSWRunPerfMem  = proc_table[i].p_vm_tsize;
-        entry->hrSWRunPerfMem += proc_table[i].p_vm_ssize;
-        entry->hrSWRunPerfMem += proc_table[i].p_vm_dsize;
+        entry->hrSWRunPerfMem  = proc_table[i].p_vm_rssize;
         entry->hrSWRunPerfMem *= (getpagesize() / 1024);
 #elif defined(dragonfly) && __DragonFly_version >= 190000
 	entry->hrSWRunPerfCPU  = proc_table[i].kp_lwp.kl_uticks;
@@ -316,9 +315,7 @@ netsnmp_arch_swrun_container_load( netsnmp_container *container, u_int flags)
         entry->hrSWRunPerfCPU  = proc_table[i].kp_proc.p_uticks;
         entry->hrSWRunPerfCPU += proc_table[i].kp_proc.p_sticks;
         entry->hrSWRunPerfCPU += proc_table[i].kp_proc.p_iticks;
-        entry->hrSWRunPerfMem  = proc_table[i].kp_eproc.e_vm.vm_tsize;
-        entry->hrSWRunPerfMem += proc_table[i].kp_eproc.e_vm.vm_ssize;
-        entry->hrSWRunPerfMem += proc_table[i].kp_eproc.e_vm.vm_dsize;
+        entry->hrSWRunPerfMem  = proc_table[i].kp_eproc.e_vm.vm_rssize;
         entry->hrSWRunPerfMem *= (getpagesize() / 1024);
 #endif
     }
@@ -327,7 +324,7 @@ netsnmp_arch_swrun_container_load( netsnmp_container *container, u_int flags)
      *   so shouldn't be freed here.
      */
 
-    DEBUGMSGTL(("swrun:load:arch"," loaded %d entries\n",
+    DEBUGMSGTL(("swrun:load:arch","loaded %d entries\n",
                 (int)CONTAINER_SIZE(container)));
 
     return 0;

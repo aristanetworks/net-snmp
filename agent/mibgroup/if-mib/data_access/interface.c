@@ -390,6 +390,21 @@ int
 Interface_Scan_Next(short *index, char *name, netsnmp_interface_entry **entry,
                     void *dc)
 {
+    int returnIndex = 0;
+    int ret;
+    if (index)
+        returnIndex = *index;
+
+    ret = Interface_Scan_NextInt( &returnIndex, name, entry, dc );
+    if (index)
+        *index = (returnIndex & 0x8fff);
+    return ret;
+}
+
+int
+Interface_Scan_NextInt(int *index, char *name, netsnmp_interface_entry **entry,
+                    void *dc)
+{
     netsnmp_interface_entry* e = NULL;
 
     if (NULL == row)
@@ -528,14 +543,14 @@ netsnmp_access_interface_entry_update_stats(netsnmp_interface_entry * prev_vals,
         if (NULL == prev_vals->old_stats) {
             return -2;
         }
-        memcpy(prev_vals->old_stats, &prev_vals->stats, sizeof(new_vals->stats));
+        memcpy(prev_vals->old_stats, &prev_vals->stats, sizeof(prev_vals->stats));
     }
 
         if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.ibytes,
                                        &new_vals->stats.ibytes,
                                        &prev_vals->old_stats->ibytes,
                                        &need_wrap_check))
-            NETSNMP_LOGONCE((LOG_ERR,
+            DEBUGMSGTL(("access:interface",
                     "Error expanding ifHCInOctets to 64bits\n"));
 
         if (new_vals->ns_flags & NETSNMP_INTERFACE_FLAGS_CALCULATE_UCAST) {
@@ -543,14 +558,14 @@ netsnmp_access_interface_entry_update_stats(netsnmp_interface_entry * prev_vals,
                                            &new_vals->stats.iall,
                                            &prev_vals->old_stats->iall,
                                            &need_wrap_check))
-                NETSNMP_LOGONCE((LOG_ERR,
+                DEBUGMSGTL(("access:interface",
                         "Error expanding packet count to 64bits\n"));
         } else {
             if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.iucast,
                                            &new_vals->stats.iucast,
                                            &prev_vals->old_stats->iucast,
                                            &need_wrap_check))
-                NETSNMP_LOGONCE((LOG_ERR,
+                DEBUGMSGTL(("access:interface",
                         "Error expanding ifHCInUcastPkts to 64bits\n"));
         }
 
@@ -558,49 +573,49 @@ netsnmp_access_interface_entry_update_stats(netsnmp_interface_entry * prev_vals,
                                        &new_vals->stats.iucast,
                                        &prev_vals->old_stats->iucast,
                                        &need_wrap_check))
-            NETSNMP_LOGONCE((LOG_ERR,
+            DEBUGMSGTL(("access:interface",
                     "Error expanding ifHCInUcastPkts to 64bits\n"));
 
         if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.imcast,
                                        &new_vals->stats.imcast,
                                        &prev_vals->old_stats->imcast,
                                        &need_wrap_check))
-            NETSNMP_LOGONCE((LOG_ERR,
+            DEBUGMSGTL(("access:interface",
                     "Error expanding ifHCInMulticastPkts to 64bits\n"));
 
         if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.ibcast,
                                        &new_vals->stats.ibcast,
                                        &prev_vals->old_stats->ibcast,
                                        &need_wrap_check))
-            NETSNMP_LOGONCE((LOG_ERR,
+            DEBUGMSGTL(("access:interface",
                     "Error expanding ifHCInBroadcastPkts to 64bits\n"));
 
         if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.obytes,
                                        &new_vals->stats.obytes,
                                        &prev_vals->old_stats->obytes,
                                        &need_wrap_check))
-            NETSNMP_LOGONCE((LOG_ERR,
+            DEBUGMSGTL(("access:interface",
                     "Error expanding ifHCOutOctets to 64bits\n"));
 
         if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.oucast,
                                        &new_vals->stats.oucast,
                                        &prev_vals->old_stats->oucast,
                                        &need_wrap_check))
-            NETSNMP_LOGONCE((LOG_ERR,
+            DEBUGMSGTL(("access:interface",
                     "Error expanding ifHCOutUcastPkts to 64bits\n"));
 
         if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.omcast,
                                        &new_vals->stats.omcast,
                                        &prev_vals->old_stats->omcast,
                                        &need_wrap_check))
-            NETSNMP_LOGONCE((LOG_ERR,
+            DEBUGMSGTL(("access:interface",
                     "Error expanding ifHCOutMulticastPkts to 64bits\n"));
 
         if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.obcast,
                                        &new_vals->stats.obcast,
                                        &prev_vals->old_stats->obcast,
                                        &need_wrap_check))
-            NETSNMP_LOGONCE((LOG_ERR,
+            DEBUGMSGTL(("access:interface",
                     "Error expanding ifHCOutBroadcastPkts to 64bits\n"));
 
     /*

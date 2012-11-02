@@ -180,8 +180,8 @@ internal_register_config_handler(const char *type_param,
         struct config_line *ltmp2 = NULL;
         char                buf[STRINGMAX];
         char               *cptr = buf;
-        strncpy(buf, type, STRINGMAX - 1);
-        buf[STRINGMAX - 1] = '\0';
+
+        strlcpy(buf, type, STRINGMAX);
         while (cptr) {
             char* c = cptr;
             cptr = strchr(cptr, ':');
@@ -293,10 +293,11 @@ register_app_prenetsnmp_mib_handler(const char *token,
  *                 token and the rest of the line to do whatever is required
  *                 Should be non-NULL in order to make use of this API.
  *
- * @param releaser if non-NULL, the function specified is called if
- *                 and when the configuration files are re-read.  This function
- *                 should free any resources allocated by the token handler
- *                 function.
+ * @param releaser if non-NULL, the function specified is called when
+ *                 unregistering config handler or when configuration
+ *                 files are re-read.
+ *                 This function should free any resources allocated by
+ *                 the token handler function.
  *
  * @param help     if non-NULL, used to display help information on the
  *                 expected arguments after the token.
@@ -366,8 +367,8 @@ unregister_config_handler(const char *type_param, const char *token)
     if (strchr(type, ':')) {
         char                buf[STRINGMAX];
         char               *cptr = buf;
-        strncpy(buf, type, STRINGMAX - 1);
-        buf[STRINGMAX - 1] = '\0';
+
+        strlcpy(buf, type, STRINGMAX);
         while (cptr) {
             char* c = cptr;
             cptr = strchr(cptr, ':');
@@ -406,6 +407,8 @@ unregister_config_handler(const char *type_param, const char *token)
          * found it at the top of the list 
          */
         struct config_line *ltmp2 = (*ltmp)->next;
+        if ((*ltmp)->free_func)
+            (*ltmp)->free_func();
         SNMP_FREE((*ltmp)->config_token);
         SNMP_FREE((*ltmp)->help);
         SNMP_FREE(*ltmp);
@@ -418,6 +421,8 @@ unregister_config_handler(const char *type_param, const char *token)
     }
     if ((*ltmp)->next != NULL) {
         struct config_line *ltmp2 = (*ltmp)->next->next;
+        if ((*ltmp)->next->free_func)
+            (*ltmp)->next->free_func();
         SNMP_FREE((*ltmp)->next->config_token);
         SNMP_FREE((*ltmp)->next->help);
         SNMP_FREE((*ltmp)->next);
@@ -438,8 +443,6 @@ unregister_all_config_handlers(void)
 {
     struct config_files *ctmp, *save;
     struct config_line *ltmp;
-
-    free_config();
 
     /*
      * Keep using config_files until there are no more! 
@@ -473,8 +476,8 @@ print_config_handlers(void)
 }
 #endif
 
-int             linecount,    prev_linecount;
-const char     *curfilename, *prev_filename;
+static unsigned int  linecount;
+static const char   *curfilename;
 
 struct config_line *
 read_config_get_handlers(const char *type)
@@ -582,10 +585,13 @@ snmp_config_when(char *line, int when)
         return SNMPERR_GENERR;
     }
 
-    strncpy(buf, line, STRINGMAX);
-    buf[STRINGMAX - 1] = '\0';
+    strlcpy(buf, line, STRINGMAX);
     cptr = strtok_r(buf, SNMP_CONFIG_DELIMETERS, &st);
-    if (cptr && cptr[0] == '[') {
+    if (!cptr) {
+        netsnmp_config_warn("Wrong format: %s", line);
+        return SNMPERR_GENERR;
+    }
+    if (cptr[0] == '[') {
         if (cptr[strlen(cptr) - 1] != ']') {
 	    netsnmp_config_error("no matching ']' for type %s.", cptr + 1);
             return SNMPERR_GENERR;
@@ -740,17 +746,17 @@ read_config(const char *filename,
 {
     static int      depth = 0;
     static int      files = 0;
+
+    const char * const prev_filename = curfilename;
+    const unsigned int prev_linecount = linecount;
+
     FILE           *ifile;
-    char            line[STRINGMAX], token[STRINGMAX];
-    char           *cptr;
-    int             i, ret;
-    struct config_line *lptr;
+    char           *line = NULL;  /* current line buffer */
+    size_t          linesize = 0; /* allocated size of line */
 
     /* reset file counter when recursion depth is 0 */
-    if (depth == 0) files = 0;
-
-    linecount = 0;
-    curfilename = filename;
+    if (depth == 0)
+        files = 0;
 
     if ((ifile = fopen(filename, "r")) == NULL) {
 #ifdef ENOENT
@@ -765,13 +771,9 @@ read_config(const char *filename,
                         strerror(errno)));
         } else
 #endif                          /* EACCES */
-#if defined(ENOENT) || defined(EACCES)
         {
             snmp_log_perror(filename);
         }
-#else                           /* defined(ENOENT) || defined(EACCES) */
-            snmp_log_perror(filename);
-#endif                          /* ENOENT */
         return SNMPERR_GENERR;
     }
 
@@ -789,25 +791,58 @@ read_config(const char *filename,
 	fclose(ifile);
         return SNMPERR_GENERR;
     }
+
+    linecount = 0;
+    curfilename = filename;
+
     ++files;
     ++depth;
 
     DEBUGMSGTL(("read_config:file", "Reading configuration %s (%d)\n",
                 filename, when));
-    
-    while (fgets(line, sizeof(line), ifile) != NULL) {
-        lptr = line_handler;
-        linecount++;
-        cptr = line;
-        i = strlen(line) - 1;
-        if (line[i] == '\n')
-            line[i] = 0;
+
+    while (ifile) {
+        size_t              linelen = 0; /* strlen of the current line */
+        char               *cptr;
+        struct config_line *lptr = line_handler;
+
+        for (;;) {
+            if (linesize <= linelen + 1) {
+                char *tmp = realloc(line, linesize + 256);
+                if (tmp) {
+                    line = tmp;
+                    linesize += 256;
+                } else {
+                    netsnmp_config_error("Failed to allocate memory\n");
+                    free(line);
+                    fclose(ifile);
+                    return SNMPERR_GENERR;
+                }
+            }
+            if (fgets(line + linelen, linesize - linelen, ifile) == NULL) {
+                line[linelen] = '\0';
+                fclose (ifile);
+                ifile = NULL;
+                break;
+            }
+
+            linelen += strlen(line + linelen);
+
+            if (line[linelen - 1] == '\n') {
+              line[linelen - 1] = '\0';
+              break;
+            }
+        }
+
+        ++linecount;
         DEBUGMSGTL(("9:read_config:line", "%s:%d examining: %s\n",
                     filename, linecount, line));
         /*
          * check blank line or # comment 
          */
-        if ((cptr = skip_white(cptr))) {
+        if ((cptr = skip_white(line))) {
+            char token[STRINGMAX];
+
             cptr = copy_nword(cptr, token, sizeof(token));
             if (token[0] == '[') {
                 if (token[strlen(token) - 1] != ']') {
@@ -862,8 +897,6 @@ read_config(const char *filename,
                             netsnmp_config_error("Can't open include dir '%s'.", cptr);
                         continue;
                     }
-                    prev_filename  = curfilename;
-                    prev_linecount = linecount;
                     while ((entry = readdir( d )) != NULL ) {
                         if ( entry->d_name && entry->d_name[0] != '.') {
                             len = NAMLEN(entry);
@@ -875,8 +908,6 @@ read_config(const char *filename,
                         }
                     }
                     closedir(d);
-                    curfilename = prev_filename;
-                    linecount   = prev_linecount;
                     continue;
                 } else if ( strcasecmp( token, "includefile" )==0) {
                     char  fname[SNMP_MAXPATH], *cp;
@@ -887,27 +918,24 @@ read_config(const char *filename,
                         continue;
                     }
                     if ( cptr[0] == '/' ) {
-                        strncpy(fname, cptr, SNMP_MAXPATH);
-                        fname[SNMP_MAXPATH-1]='\0';
+                        strlcpy(fname, cptr, SNMP_MAXPATH);
                     } else {
-                        strncpy(fname, filename, SNMP_MAXPATH);
-                        fname[SNMP_MAXPATH-1]='\0';
+                        strlcpy(fname, filename, SNMP_MAXPATH);
                         cp = strrchr(fname, '/');
-                        *(++cp) = '\0';
-                        strncat(fname, cptr, SNMP_MAXPATH-strlen(fname));
-                        fname[SNMP_MAXPATH-1]='\0';
+                        if (!cp)
+                            fname[0] = '\0';
+                        else
+                            *(++cp) = '\0';
+                        strlcat(fname, cptr, SNMP_MAXPATH);
                     }
-                    prev_filename  = curfilename;
-                    prev_linecount = linecount;
-                    ret = read_config(fname, line_handler, when);
-                    curfilename = prev_filename;
-                    linecount   = prev_linecount;
-                    if ((ret != SNMPERR_SUCCESS) && (when != PREMIB_CONFIG))
-                        netsnmp_config_error("Included file '%s' not found.", fname);
+                    if (read_config(fname, line_handler, when) !=
+                        SNMPERR_SUCCESS && when != PREMIB_CONFIG)
+                        netsnmp_config_error("Included file '%s' not found.",
+                                             fname);
                     continue;
                 } else if ( strcasecmp( token, "includesearch" )==0) {
                     struct config_files ctmp;
-                    int len;
+                    int len, ret;
 
                     if (cptr == NULL) {
                         if (when != PREMIB_CONFIG)
@@ -920,11 +948,7 @@ read_config(const char *filename,
                     ctmp.next = NULL;
                     if ((len > 5) && (strcmp(&cptr[len-5],".conf") == 0))
                        cptr[len-5] = 0; /* chop off .conf */
-                    prev_filename  = curfilename;
-                    prev_linecount = linecount;
                     ret = read_config_files_of_type(when,&ctmp);
-                    curfilename = prev_filename;
-                    linecount   = prev_linecount;
                     if ((len > 5) && (cptr[len-5] == 0))
                        cptr[len-5] = '.'; /* restore .conf */
                     if (( ret != SNMPERR_SUCCESS ) && (when != PREMIB_CONFIG))
@@ -945,7 +969,9 @@ read_config(const char *filename,
             }
         }
     }
-    fclose(ifile);
+    free(line);
+    linecount = prev_linecount;
+    curfilename = prev_filename;
     --depth;
     return SNMPERR_SUCCESS;
 
@@ -2320,210 +2346,3 @@ read_config_store_data_prefix(char prefix, int type, char *storeto,
 }
 
 /** @} */
-
-#ifdef READ_CONFIG_UNIT_TEST
-
-#define NETSNMP_USE_ASSERT 1
-#include <net-snmp/libary/snmp_assert.h>
-
-int
-read64(U64 * i64, const char *str)
-{
-    netsnmp_assert(0);
-}
-
-int
-snmp_get_do_debugging(void)
-{
-    return 0;
-}
-
-int
-debug_is_token_registered(const char *token)
-{
-    netsnmp_assert(0);
-}
-
-void
-debugmsg(const char *token, const char *format, ...)
-{
-    netsnmp_assert(0);
-}
-
-void
-debugmsgtoken(const char *token, const char *format, ...)
-{
-    netsnmp_assert(0);
-}
-
-int
-snmp_log(int priority, const char *format, ...)
-{
-#if 0
-    va_list         ap;
-
-    va_start(ap, format);
-    vprintf(format, ap);
-    va_end(ap);
-#endif
-    return 0;
-}
-
-void
-snmp_log_perror(const char *s)
-{
-    netsnmp_assert(0);
-}
-
-int
-snmp_vlog(int priority, const char *format, va_list ap)
-{
-    netsnmp_assert(0);
-}
-
-int
-netsnmp_ds_set_boolean(int storeid, int which, int value)
-{
-    netsnmp_assert(0);
-}
-
-int
-netsnmp_ds_get_boolean(int storeid, int which)
-{
-    netsnmp_assert(0);
-}
-
-int
-netsnmp_ds_set_string(int storeid, int which, const char *value)
-{
-    netsnmp_assert(0);
-}
-
-char           *
-netsnmp_ds_get_string(int storeid, int which)
-{
-    netsnmp_assert(0);
-}
-
-char           *
-netsnmp_getenv(const char *name)
-{
-    netsnmp_assert(0);
-}
-
-int
-snmp_call_callbacks(int major, int minor, void *caller_arg)
-{
-    netsnmp_assert(0);
-}
-
-int
-mkdirhier(const char *pathname, mode_t mode, int skiplast)
-{
-    netsnmp_assert(0);
-}
-
-int
-read_objid(const char *input, oid * output, size_t * out_len)
-{
-    netsnmp_assert(0);
-}
-
-struct read_config_testcase {
-    /*
-     * inputs 
-     */
-    const char     *(*pf) (const char * readfrom, u_char ** str,
-                           size_t * len);
-    const char     *readfrom;
-    size_t          obuf_len;
-
-    /*
-     * expected outputs 
-     */
-    size_t          expected_offset;
-    const u_char   *expected_output;
-    size_t          expected_len;
-};
-
-static const u_char obuf1[] = { 1, 0, 2 };
-static const u_char obuf2[] = { 'a', 'b', 'c', 0 };
-static const u_char obuf3[] = { 1, 3, 2 };
-
-static const struct read_config_testcase test_input[] = {
-    { &read_config_read_octet_string_const, "",           1, -1, NULL,  0 },
-    { &read_config_read_octet_string_const, "0x0",        1, -1, NULL,  1 },
-    { &read_config_read_octet_string_const, "0x0 0",      1, -1, NULL,  1 },
-
-    { &read_config_read_octet_string_const, "0x010002",   1, -1, NULL,  0 },
-    { &read_config_read_octet_string_const, "0x010002",   2, -1, NULL,  0 },
-    { &read_config_read_octet_string_const, "0x010002",   3, -1, obuf1, 0 },
-    { &read_config_read_octet_string_const, "0x010002",   4, -1, obuf1, 3 },
-    { &read_config_read_octet_string_const, "0x010002 0", 4,  9, obuf1, 3 },
-    { &read_config_read_octet_string_const, "0x010002",   0, -1, obuf1, 3 },
-
-    { &read_config_read_octet_string_const, "abc",        1, -1, NULL,  0 },
-    { &read_config_read_octet_string_const, "abc z",      1,  4, NULL,  0 },
-    { &read_config_read_octet_string_const, "abc",        2, -1, NULL,  1 },
-    { &read_config_read_octet_string_const, "abc",        3, -1, obuf2, 2 },
-    { &read_config_read_octet_string_const, "abc",        4, -1, obuf2, 3 },
-    { &read_config_read_octet_string_const, "abc z",      4,  4, obuf2, 3 },
-    { &read_config_read_octet_string_const, "abc",        0, -1, obuf2, 3 },
-};
-
-int
-main(int argc, char **argv)
-{
-    int             failure_count = 0;
-    unsigned int    i, j;
-
-    printf("Start of unit test.\n");
-    for (i = 0; i < sizeof(test_input) / sizeof(test_input[0]); i++) {
-        const struct read_config_testcase *const p = &test_input[i];
-        size_t          len = p->obuf_len;
-        u_char         *str = len > 0 ? malloc(len) : NULL;
-        const char     *result;
-        size_t          offset;
-
-        printf("Test %d ...\n", i);
-        fflush(stdout);
-        result = (p->pf) (p->readfrom, &str, &len);
-        offset = result ? result - p->readfrom : -1;
-        if (offset != p->expected_offset) {
-            failure_count++;
-            printf("test %d: expected offset %zd, got offset %" NETSNMP_PRIz "d\n",
-                   i, p->expected_offset, offset);
-        } else if (len != p->expected_len) {
-            failure_count++;
-            printf("test %d: expected length %d, got length %d\n",
-                   i, p->expected_len, len);
-        } else if (len >= 0 && p->expected_output
-                   && memcmp(str, p->expected_output, len) != 0
-                   && p->expected_output[len] == 0) {
-            failure_count++;
-            printf("test %d: output buffer mismatch\n", i);
-            printf("Expected: ");
-            for (j = 0; j < p->expected_len; ++j)
-                printf("%02x ", p->expected_output[j]);
-            printf("\nActual:   ");
-            for (j = 0; j < len; ++j)
-                printf("%02x ", str[j]);
-            printf("\n");
-        }
-
-        if (str)
-            free(str);
-    }
-    if (failure_count == 0)
-        printf("All %d tests passed.\n", i);
-    return 0;
-}
-#endif                          /* READ_CONFIG_UNIT_TEST */
-
-/*
- * Local variables:
- * c-basic-offset: 4
- * indent-tabs-mode: nil
- * compile-command: "gcc -Wall -Werror -DREAD_CONFIG_UNIT_TEST=1 -O1 -I../include -g -o read_config-unit-test read_config.c && ./read_config-unit-test && valgrind --leak-check=full ./read_config-unit-test"
- * End:
- */

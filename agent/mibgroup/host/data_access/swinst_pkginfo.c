@@ -59,7 +59,7 @@ netsnmp_swinst_arch_init(void)
     snprintf( pkg_directory, SNMP_MAXPATH, "/system" );
 #elif defined(hpux10) ||  defined(hpux11) 
     snprintf( pkg_directory, SNMP_MAXPATH, "/var/adm/sw/products" );
-#elif defined(freebsd2)
+#elif defined(freebsd2) || defined(openbsd)
     snprintf( pkg_directory, SNMP_MAXPATH, "/var/db/pkg" );
 #elif defined(linux)
     snprintf( pkg_directory, SNMP_MAXPATH, "/var/cache/hrmib" );
@@ -103,7 +103,9 @@ netsnmp_swinst_arch_load( netsnmp_container *container, u_int flags)
                          if there isn't a list of them! */
     }
     d = opendir( pkg_directory );
-    while (d != NULL && (dp = readdir(d)) != NULL) {
+    if (!d)
+	return 1;
+    while ((dp = readdir(d)) != NULL) {
         if ( '.' == dp->d_name[0] )
             continue;
         entry = netsnmp_swinst_entry_create( i++ );

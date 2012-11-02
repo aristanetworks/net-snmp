@@ -2727,6 +2727,7 @@ usm_handle_report(void *sessp,
         }
         session->s_snmp_errno = res;
     }  
+    /* fallthrough */
     case SNMPERR_USM_UNKNOWNENGINEID:
     case SNMPERR_USM_UNKNOWNSECURITYNAME:
     case SNMPERR_USM_UNSUPPORTEDSECURITYLEVEL:
@@ -3150,6 +3151,7 @@ int usm_discover_engineid(void *slpv, netsnmp_session *session) {
         break;
     case STAT_TIMEOUT:
         session->s_snmp_errno = SNMPERR_TIMEOUT;
+        break;
     default:
         DEBUGMSGTL(("snmp_sess_open",
                     "unable to connect with remote engine: %s (%d)\n",
@@ -4160,8 +4162,8 @@ usm_set_password(const char *token, char *line)
 {
     char           *cp;
     char            nameBuf[SNMP_MAXBUF];
-    u_char         *engineID;
-    size_t          engineIDLen;
+    u_char         *engineID = NULL;
+    size_t          engineIDLen = 0;
     struct usmUser *user;
 
     cp = copy_nword(line, nameBuf, sizeof(nameBuf));
@@ -4185,15 +4187,18 @@ usm_set_password(const char *token, char *line)
         cp = read_config_read_octet_string(cp, &engineID, &engineIDLen);
         if (cp == NULL) {
             config_perror("invalid engineID specifier");
+            SNMP_FREE(engineID);
             return;
         }
 
         user = usm_get_user(engineID, engineIDLen, nameBuf);
         if (user == NULL) {
             config_perror("not a valid user/engineID pair");
+            SNMP_FREE(engineID);
             return;
         }
         usm_set_user_password(user, token, cp);
+        SNMP_FREE(engineID);
     }
 }
 

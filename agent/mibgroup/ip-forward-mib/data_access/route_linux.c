@@ -103,8 +103,7 @@ _load_ipv4(netsnmp_container* container, u_long *index )
         /*
          * temporary null terminated name
          */
-        strncpy(name, rtent_name, sizeof(name));
-        name[ sizeof(name)-1 ] = 0;
+        strlcpy(name, rtent_name, sizeof(name));
 
         /*
          * don't bother to try and get the ifindex for routes with
@@ -203,8 +202,6 @@ _load_ipv6(netsnmp_container* container, u_long *index )
     FILE           *in;
     char            line[256];
     netsnmp_route_entry *entry = NULL;
-    char            name[16];
-    static int      log_open_err = 1;
 
     DEBUGMSGTL(("access:route:container",
                 "route_container_arch_load ipv6\n"));
@@ -215,18 +212,10 @@ _load_ipv6(netsnmp_container* container, u_long *index )
      * fetch routes from the proc file-system:
      */
     if (!(in = fopen("/proc/net/ipv6_route", "r"))) {
-        if (1 == log_open_err) {
-            NETSNMP_LOGONCE((LOG_ERR, "cannot open /proc/net/ipv6_route\n"));
-            log_open_err = 0;
-        }
+        DEBUGMSGTL(("9:access:route:container", "cannot open /proc/net/ipv6_route\n"));
         return -2;
     }
-    /*
-     * if we turned off logging of open errors, turn it back on now that
-     * we have been able to open the file.
-     */
-    if (0 == log_open_err)
-        log_open_err = 1;
+    
     fgets(line,sizeof(line),in); /* skip header */
     while (fgets(line, sizeof(line), in)) {
         char            c_name[IFNAMSIZ+1];
@@ -272,7 +261,7 @@ _load_ipv6(netsnmp_container* container, u_long *index )
         entry->if_index = se_find_value_in_slist("interfaces", c_name);
         if(SE_DNE == entry->if_index) {
             snmp_log(LOG_ERR,"unknown interface in /proc/net/ipv6_route "
-                     "('%s')\n", name);
+                     "('%s')\n", c_name);
             netsnmp_access_route_entry_free(entry);
             continue;
         }

@@ -134,11 +134,10 @@ netsnmp_transport_copy(netsnmp_transport *t)
         return NULL;
     }
 
-    n = (netsnmp_transport *) malloc(sizeof(netsnmp_transport));
+    n = SNMP_MALLOC_TYPEDEF(netsnmp_transport);
     if (n == NULL) {
         return NULL;
     }
-    memset(n, 0, sizeof(netsnmp_transport));
 
     if (t->domain != NULL) {
         n->domain = t->domain;
@@ -506,10 +505,6 @@ netsnmp_tdomain_transport_full(const char *application,
     const char * const *spec = NULL;
     int                 any_found = 0;
     char buf[SNMP_MAXPATH];
-    extern const char *curfilename;		/* from read_config.c */
-    const char        *prev_curfilename;
-
-    prev_curfilename = curfilename;
 
     DEBUGMSGTL(("tdomain",
                 "tdomain_transport_full(\"%s\", \"%s\", %d, \"%s\", \"%s\")\n",
@@ -558,7 +553,7 @@ netsnmp_tdomain_transport_full(const char *application,
         if (NULL !=
             (newhost = netsnmp_ds_get_string(NETSNMP_DS_LIBRARY_ID,
                                              NETSNMP_DS_LIB_HOSTNAME))) {
-            strncpy(buf, newhost, sizeof(buf)-1);
+            strlcpy(buf, newhost, sizeof(buf));
             str = buf;
         }
 
@@ -648,7 +643,6 @@ netsnmp_tdomain_transport_full(const char *application,
             else
                 t = match->f_create_from_tstring_new(addr, local, addr2);
             if (t) {
-                curfilename = prev_curfilename;
                 return t;
             }
         }
@@ -660,7 +654,6 @@ netsnmp_tdomain_transport_full(const char *application,
     }
     if (!any_found)
         snmp_log(LOG_ERR, "No support for any checked transport domain\n");
-    curfilename = prev_curfilename;
     return NULL;
 }
 

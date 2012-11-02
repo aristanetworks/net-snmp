@@ -184,6 +184,8 @@ SOFTWARE.
 #include <net-snmp/library/snmp_api.h>
 #include <net-snmp/library/read_config.h> /* for get_temp_file_pattern() */
 
+#include "inet_ntop.h"
+
 /* NetSNMP and DNSSEC-Tools both define FREE. We'll not use either here. */
 #undef FREE
 
@@ -645,25 +647,19 @@ get_boottime(void)
 }
 #endif
 
-/*
- * Returns uptime in centiseconds(!).
+/**
+ * Returns the system uptime in centiseconds.
+ *
+ * @note The value returned by this function is not identical to sysUpTime
+ *   defined in RFC 1213. get_uptime() returns the system uptime while
+ *   sysUpTime represents the time that has elapsed since the most recent
+ *   restart of the network manager (snmpd).
+ *
+ * @see See also netsnmp_get_agent_uptime().
  */
 long
 get_uptime(void)
 {
-#if !defined(solaris2) && !defined(linux) && !defined(cygwin) && !defined(aix4) && !defined(aix5) && !defined(aix6) && !defined(aix7)
-    struct timeval  now;
-    long            boottime_csecs, nowtime_csecs;
-
-    boottime_csecs = get_boottime();
-    if (boottime_csecs == 0)
-        return 0;
-    gettimeofday(&now, (struct timezone *) 0);
-    nowtime_csecs = (now.tv_sec * 100) + (now.tv_usec / 10000);
-
-    return (nowtime_csecs - boottime_csecs);
-#endif
-
 #if defined(aix4) || defined(aix5) || defined(aix6) || defined(aix7)
     struct nlist nl;
     int kmem;
@@ -676,9 +672,7 @@ get_uptime(void)
     read(kmem, &lbolt, sizeof(lbolt));
     close(kmem);
     return(lbolt);
-#endif
-
-#ifdef solaris2
+#elif defined(solaris2)
     kstat_ctl_t    *ksc = kstat_open();
     kstat_t        *ks;
     kid_t           kid;
@@ -703,9 +697,7 @@ get_uptime(void)
         kstat_close(ksc);
     }
     return lbolt;
-#endif                          /* solaris2 */
-
-#ifdef linux
+#elif defined(linux) || defined(cygwin)
     FILE           *in = fopen("/proc/uptime", "r");
     long            uptim = 0, a, b;
     if (in) {
@@ -714,10 +706,17 @@ get_uptime(void)
         fclose(in);
     }
     return uptim;
-#endif                          /* linux */
+#else
+    struct timeval  now;
+    long            boottime_csecs, nowtime_csecs;
 
-#ifdef cygwin
-    return (0);                 /* not implemented */
+    boottime_csecs = get_boottime();
+    if (boottime_csecs == 0)
+        return 0;
+    gettimeofday(&now, (struct timezone *) 0);
+    nowtime_csecs = (now.tv_sec * 100) + (now.tv_usec / 10000);
+
+    return (nowtime_csecs - boottime_csecs);
 #endif
 }
 
@@ -936,22 +935,33 @@ netsnmp_gethostbyname(const char *name)
 #endif /* HAVE_GETHOSTBYNAME */
 }
 
+/**
+ * Look up the host name via DNS.
+ *
+ * @param[in] addr Pointer to the address to resolve. This argument points e.g.
+ *   to a struct in_addr for AF_INET or to a struct in6_addr for AF_INET6.
+ * @param[in] len  Length in bytes of *addr.
+ * @param[in] type Address family, e.g. AF_INET or AF_INET6.
+ *
+ * @return Pointer to a hostent structure if address lookup succeeded or NULL
+ *   if the lookup failed.
+ *
+ * @see See also the gethostbyaddr() man page.
+ */
 struct hostent *
 netsnmp_gethostbyaddr(const void *addr, socklen_t len, int type)
 {
 #if HAVE_GETHOSTBYADDR
     struct hostent *hp = NULL;
-    struct sockaddr_in *saddr_in =
-        NETSNMP_REMOVE_CONST(struct sockaddr_in *,addr);
+    char buf[64];
 
-    DEBUGMSGTL(("dns:gethostbyaddr", "resolving { AF_INET, %s:%hu }\n",
-                inet_ntoa(saddr_in->sin_addr), ntohs(saddr_in->sin_port)));
+    DEBUGMSGTL(("dns:gethostbyaddr", "resolving %s\n",
+                inet_ntop(type, addr, buf, sizeof(buf))));
 
 #ifdef DNSSEC_LOCAL_VALIDATION
     val_status_t val_status;
-    hp = val_gethostbyaddr(netsnmp_validator_context(),
-                           (const void*)&saddr_in->sin_addr,
-                           sizeof(struct in_addr), AF_INET, &val_status);
+    hp = val_gethostbyaddr(netsnmp_validator_context(), addr, len, type,
+                           &val_status);
     DEBUGMSGTL(("dns:sec:val", "val_status %d / %s; trusted: %d\n",
                 val_status, p_val_status(val_status),
                 val_istrusted(val_status)));
@@ -967,8 +977,7 @@ netsnmp_gethostbyaddr(const void *addr, socklen_t len, int type)
     else if (val_does_not_exist(val_status) && hp)
         hp = NULL;
 #else
-    hp = gethostbyaddr((const void*) &saddr_in->sin_addr,
-                       sizeof(struct in_addr), AF_INET);
+    hp = gethostbyaddr(addr, len, type);
 #endif
     if (hp == NULL) {
         DEBUGMSGTL(("dns:gethostbyaddr", "couldn't resolve addr\n"));
@@ -1077,44 +1086,30 @@ setenv(const char *name, const char *value, int overwrite)
 }
 #endif                          /* HAVE_SETENV */
 
-/* returns centiseconds */
 netsnmp_feature_child_of(calculate_time_diff, netsnmp_unused)
 #ifndef NETSNMP_FEATURE_REMOVE_CALCULATE_TIME_DIFF
+/**
+ * Compute (*now - *then) in centiseconds.
+ */
 int
 calculate_time_diff(const struct timeval *now, const struct timeval *then)
 {
-    struct timeval  tmp, diff;
-    memcpy(&tmp, now, sizeof(struct timeval));
-    tmp.tv_sec--;
-    tmp.tv_usec += 1000000L;
-    diff.tv_sec = tmp.tv_sec - then->tv_sec;
-    diff.tv_usec = tmp.tv_usec - then->tv_usec;
-    if (diff.tv_usec > 1000000L) {
-        diff.tv_usec -= 1000000L;
-        diff.tv_sec++;
-    }
+    struct timeval  diff;
+
+    NETSNMP_TIMERSUB(now, then, &diff);
     return (int)(diff.tv_sec * 100 + diff.tv_usec / 10000);
 }
 #endif /* NETSNMP_FEATURE_REMOVE_CALCULATE_TIME_DIFF */
 
 #ifndef NETSNMP_FEATURE_REMOVE_CALCULATE_SECTIME_DIFF
-/* returns diff in rounded seconds */
+/** Compute rounded (*now - *then) in seconds. */
 u_int
 calculate_sectime_diff(const struct timeval *now, const struct timeval *then)
 {
-    struct timeval  tmp, diff;
-    memcpy(&tmp, now, sizeof(struct timeval));
-    tmp.tv_sec--;
-    tmp.tv_usec += 1000000L;
-    diff.tv_sec = tmp.tv_sec - then->tv_sec;
-    diff.tv_usec = tmp.tv_usec - then->tv_usec;
-    if (diff.tv_usec >= 1000000L) {
-        diff.tv_usec -= 1000000L;
-        diff.tv_sec++;
-    }
-    if (diff.tv_usec >= 500000L)
-        return (u_int)(diff.tv_sec + 1);
-    return (u_int)(diff.tv_sec);
+    struct timeval  diff;
+
+    NETSNMP_TIMERSUB(now, then, &diff);
+    return diff.tv_sec + (diff.tv_usec >= 500000L);
 }
 #endif /* NETSNMP_FEATURE_REMOVE_CALCULATE_SECTIME_DIFF */
 
@@ -1179,8 +1174,17 @@ mkdirhier(const char *pathname, mode_t mode, int skiplast)
     struct stat     sbuf;
     char           *ourcopy = strdup(pathname);
     char           *entry;
-    char            buf[SNMP_MAXPATH];
+    char           *buf = NULL;
     char           *st = NULL;
+    int             res;
+
+    res = SNMPERR_GENERR;
+    if (!ourcopy)
+        goto out;
+
+    buf = malloc(strlen(pathname) + 2);
+    if (!buf)
+        goto out;
 
 #if defined (WIN32) || defined (cygwin)
     /* convert backslash to forward slash */
@@ -1223,12 +1227,9 @@ mkdirhier(const char *pathname, mode_t mode, int skiplast)
 #else
             if (mkdir(buf, mode) == -1)
 #endif
-            {
-                free(ourcopy);
-                return SNMPERR_GENERR;
-            } else {
+                goto out;
+            else
                 snmp_log(LOG_INFO, "Created directory: %s\n", buf);
-            }
         } else {
             /*
              * exists, is it a file? 
@@ -1237,13 +1238,15 @@ mkdirhier(const char *pathname, mode_t mode, int skiplast)
                 /*
                  * ack! can't make a directory on top of a file 
                  */
-                free(ourcopy);
-                return SNMPERR_GENERR;
+                goto out;
             }
         }
     }
+    res = SNMPERR_SUCCESS;
+out:
+    free(buf);
     free(ourcopy);
-    return SNMPERR_SUCCESS;
+    return res;
 }
 
 /**
@@ -1262,9 +1265,14 @@ netsnmp_mktemp(void)
 #endif
     int             fd = -1;
 
-    strcpy(name, get_temp_file_pattern());
+    strlcpy(name, get_temp_file_pattern(), sizeof(name));
 #ifdef HAVE_MKSTEMP
-    fd = mkstemp(name);
+    {
+        mode_t oldmask = umask(~(S_IRUSR | S_IWUSR));
+        netsnmp_assert(oldmask != (mode_t)(-1));
+        fd = mkstemp(name);
+        umask(oldmask);
+    }
 #else
     if (mktemp(name)) {
 # ifndef WIN32
@@ -1361,6 +1369,15 @@ netsnmp_os_kernel_width(void)
 
 netsnmp_feature_child_of(str_to_uid, user_information)
 #ifndef NETSNMP_FEATURE_REMOVE_STR_TO_UID
+/**
+ * Convert a user name or number into numeric form.
+ *
+ * @param[in] useroruid Either a Unix user name or the ASCII representation
+ *   of a user number.
+ *
+ * @return Either a user number > 0 or 0 if useroruid is not a valid user
+ *   name, not a valid user number or the name of the root user.
+ */
 int netsnmp_str_to_uid(const char *useroruid) {
     int uid;
 #if HAVE_GETPWNAM && HAVE_PWD_H
@@ -1369,13 +1386,13 @@ int netsnmp_str_to_uid(const char *useroruid) {
 
     uid = atoi(useroruid);
 
-    if ( uid == 0 ) {
+    if (uid == 0) {
 #if HAVE_GETPWNAM && HAVE_PWD_H
-        pwd = getpwnam( useroruid );
-        if (pwd)
-            uid = pwd->pw_uid;
-        else
+        pwd = getpwnam(useroruid);
+        uid = pwd ? pwd->pw_uid : 0;
+        endpwent();
 #endif
+        if (uid == 0)
             snmp_log(LOG_WARNING, "Can't identify user (%s).\n", useroruid);
     }
     return uid;
@@ -1385,23 +1402,31 @@ int netsnmp_str_to_uid(const char *useroruid) {
 
 netsnmp_feature_child_of(str_to_gid, user_information)
 #ifndef NETSNMP_FEATURE_REMOVE_STR_TO_GID
-int netsnmp_str_to_gid(const char *grouporgid) {
+/**
+ * Convert a group name or number into numeric form.
+ *
+ * @param[in] grouporgid Either a Unix group name or the ASCII representation
+ *   of a group number.
+ *
+ * @return Either a group number > 0 or 0 if grouporgid is not a valid group
+ *   name, not a valid group number or the root group.
+ */
+int netsnmp_str_to_gid(const char *grouporgid)
+{
     int gid;
-#if HAVE_GETGRNAM && HAVE_GRP_H
-    struct group  *grp;
-#endif
 
     gid = atoi(grouporgid);
 
-    if ( gid == 0 ) {
+    if (gid == 0) {
 #if HAVE_GETGRNAM && HAVE_GRP_H
-        grp = getgrnam( grouporgid );
-        if (grp)
-            gid = grp->gr_gid;
-        else
+        struct group  *grp;
+
+        grp = getgrnam(grouporgid);
+        gid = grp ? grp->gr_gid : 0;
+        endgrent();
 #endif
-            snmp_log(LOG_WARNING, "Can't identify group (%s).\n",
-                     grouporgid);
+        if (gid == 0)
+            snmp_log(LOG_WARNING, "Can't identify group (%s).\n", grouporgid);
     }
 
     return gid;

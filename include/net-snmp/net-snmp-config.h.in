@@ -96,13 +96,16 @@
 /* Define to 1 if you have the <asm/types.h> header file. */
 #undef HAVE_ASM_TYPES_H
 
+/* Define if using MY_INIT() causes a linker error */
+#undef HAVE_BROKEN_LIBMYSQLCLIENT
+
 /* Define to 1 if you have the `cgetnext' function. */
 #undef HAVE_CGETNEXT
 
 /* Define to 1 if you have the `chown' function. */
 #undef HAVE_CHOWN
 
-/* Define to 1 if you have the `clock_gettime' function. */
+/* Define to 1 if you have the `clock_gettime' library */
 #undef HAVE_CLOCK_GETTIME
 
 /* Define to 1 if you have the `closedir' function. */
@@ -143,6 +146,12 @@
 /* Define to 1 if you have the `eval_pv' function. */
 #undef HAVE_EVAL_PV
 
+/* Define to 1 if you have the `EVP_MD_CTX_create' function. */
+#undef HAVE_EVP_MD_CTX_CREATE
+
+/* Define to 1 if you have the `EVP_MD_CTX_destroy' function. */
+#undef HAVE_EVP_MD_CTX_DESTROY
+
 /* Define if you have EVP_sha224/256 in openssl */
 #undef HAVE_EVP_SHA224
 
@@ -155,11 +164,20 @@
 /* Define to 1 if you have the <fcntl.h> header file. */
 #undef HAVE_FCNTL_H
 
+/* Define to 1 if you have the `fgetc_unlocked' function. */
+#undef HAVE_FGETC_UNLOCKED
+
+/* Define to 1 if you have the `flockfile' function. */
+#undef HAVE_FLOCKFILE
+
 /* Define to 1 if you have the `fork' function. */
 #undef HAVE_FORK
 
 /* Define to 1 if you have the <fstab.h> header file. */
 #undef HAVE_FSTAB_H
+
+/* Define to 1 if you have the `funlockfile' function. */
+#undef HAVE_FUNLOCKFILE
 
 /* Define to 1 if you have the `gai_strerror' function. */
 #undef HAVE_GAI_STRERROR
@@ -749,6 +767,9 @@
 /* Define to 1 if you have the <string.h> header file. */
 #undef HAVE_STRING_H
 
+/* Define to 1 if you have the `strlcat' function. */
+#undef HAVE_STRLCAT
+
 /* Define to 1 if you have the `strlcpy' function. */
 #undef HAVE_STRLCPY
 
@@ -775,6 +796,9 @@
 
 /* Define to 1 if `d_type' is a member of `struct dirent'. */
 #undef HAVE_STRUCT_DIRENT_D_TYPE
+
+/* Define to 1 if `speed_hi' is a member of `struct ethtool_cmd'. */
+#undef HAVE_STRUCT_ETHTOOL_CMD_SPEED_HI
 
 /* Define to 1 if `ifa_next' is a member of `struct ifaddr'. */
 #undef HAVE_STRUCT_IFADDR_IFA_NEXT
@@ -1169,6 +1193,9 @@
 /* Define to 1 if you have the `times' function. */
 #undef HAVE_TIMES
 
+/* Define if a timezone variable is declared in <sys/time.h> */
+#undef HAVE_TIMEZONE_VARIABLE
+
 /* Define to 1 if you have the <ufs/ffs/fs.h> header file. */
 #undef HAVE_UFS_FFS_FS_H
 
@@ -1288,6 +1315,12 @@
 /* default mib files to load, specified by path. */
 #undef NETSNMP_DEFAULT_MIBFILES
 
+/* Define if no agent is built */
+#undef NETSNMP_DISABLE_AGENT
+
+/* Define if no apps are built */
+#undef NETSNMP_DISABLE_APPS
+
 /* Define if DES encryption should not be supported */
 #undef NETSNMP_DISABLE_DES
 
@@ -1330,6 +1363,9 @@
 
 /* ifnet needs to have _KERNEL defined */
 #undef NETSNMP_IFNET_NEEDS_KERNEL
+
+/* ifnet needs to have _KERNEL_STRUCTURES defined */
+#undef NETSNMP_IFNET_NEEDS_KERNEL_STRUCTURES
 
 /* Define if you want to remove all non-essential code features. */
 #undef NETSNMP_MINIMAL_CODE
@@ -1920,9 +1956,6 @@
 /* UNdefine to allow specifying zero-length community string */
 /* #define NETSNMP_NO_ZEROLENGTH_COMMUNITY 1 */
 
-/* define to exit the agent on a bad kernel read */
-/* #define NETSNMP_EXIT_ON_BAD_KLREAD  */
-
 /* Number of community strings to store */
 #define NETSNMP_NUM_COMMUNITIES	5
 
@@ -2277,10 +2310,6 @@
 
 #ifdef NETSNMP_NO_ZEROLENGTH_COMMUNITY
 # define NO_ZEROLENGTH_COMMUNITY NETSNMP_NO_ZEROLENGTH_COMMUNITY
-#endif
-
-#ifdef NETSNMP_EXIT_ON_BAD_KLREAD
-# define EXIT_ON_BAD_KLREAD NETSNMP_EXIT_ON_BAD_KLREAD
 #endif
 
 #define LASTFIELD NETSNMP_LASTFIELD

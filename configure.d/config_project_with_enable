@@ -93,7 +93,12 @@ NETSNMP_ARG_WITH(openssl,
     elif test "x$withval" = "xno"; then
       tryopenssl=no
     elif test -d "$withval"; then
-      AC_ADD_SEARCH_PATH($withval)
+      if test -d "$withval/lib/MinGW"; then
+        LDFLAGS="-L$withval/lib/MinGW $LDFLAGS"
+        CPPFLAGS="-I$withval/include $CPPFLAGS"
+      else
+        AC_ADD_SEARCH_PATH($withval)
+      fi
       tryopenssl=yes
       askedopenssl=yes
     fi,
@@ -175,8 +180,14 @@ fi
 AC_SUBST(INSTALL_PREFIX)
 
 
-#   
+#
 #   Subsystems to build:
+#       Library
+#
+FEATUREHEADERS="library/features.h"
+FTMAINSUBS=""
+
+#
 #       Agent
 #
 NETSNMP_ARG_ENABLE(agent,
@@ -184,6 +195,7 @@ NETSNMP_ARG_ENABLE(agent,
 if test "x$enable_agent" != "xno"; then
    SNMPD='snmpd$(EXEEXT)'
    MAINSUBS="$MAINSUBS agent"
+   FEATUREHEADERS="$FEATUREHEADERS agent/features-mibgroups.h agent/features.h"
    FTMAINSUBS="agent $FTMAINSUBS"
    TRAPLIBS='$(TRAPDWITHAGENT)'
    USETRAPLIBS='$(USEAGENTLIBS)'
@@ -196,7 +208,9 @@ else
    #USETRAPLIBS='$(USELIBS)'
    TRAPLIBS='$(TRAPDWITHAGENT)'
    USETRAPLIBS='$(USEAGENTLIBS)'
+   AC_DEFINE([NETSNMP_DISABLE_AGENT], 1, [Define if no agent is built])
 fi
+
 AC_SUBST(SNMPD)
 AC_SUBST(TRAPLIBS)
 AC_SUBST(USETRAPLIBS)
@@ -207,7 +221,10 @@ NETSNMP_ARG_ENABLE(applications,
 [  --disable-applications          Do not build the apps (snmpget, ...).])
 if test "x$enable_applications" != "xno"; then
    MAINSUBS="$MAINSUBS apps"
+   FEATUREHEADERS="$FEATUREHEADERS features-snmpnetstat.h features-apps.h"
    FTMAINSUBS="apps $FTMAINSUBS"
+else
+   AC_DEFINE([NETSNMP_DISABLE_APPS], 1, [Define if no apps are built])
 fi
 
 #       Manual pages
@@ -542,8 +559,9 @@ AC_ARG_WITH(out_transports,
     IPX         support for SNMP over IPX per RFC 1420.
                 This transport is presently only available for Linux,
                 is never compiled in by default and may be omitted.
+    DTLSUDP     support for tunneling SNMP over DTLS/UDP
+    TLSTCP      support for tunneling SNMP over TLS/TCP
     SSH         (alpha) support for tunneling SNMP over SSH
-    DTLSUDP     (alpha) support for tunneling SNMP over DTLS/UDP
 ])
 
 #
@@ -566,7 +584,7 @@ NETSNMP_ARG_WITH(security-modules,
         usm                support for user based SNMP security
         ksm                support for kerberos based SNMP security
         tsm                support for the Transport-based security
-                           (for use with the SSH and DTLSUDP transports)
+                           (for use with the SSH, DTLSUDP and TLSTCP transports)
 ])
 
 NETSNMP_ARG_WITH(out-security-modules,
@@ -767,19 +785,19 @@ AC_ARG_WITH(feature,, NETSNMP_INVALID_WITH([features]))
 AC_ARG_WITH(out-feature,, NETSNMP_INVALID_WITH([out-features]))
 
 FEATURETARGS=""
-FEATUREHEADERS=""
 NETSNMP_ARG_ENABLE(minimalist,
 [  --enable-minimalist             Remove all non-essential code features.])
 if test "x$enable_minimalist" = "xyes"; then
    # we'll assume the mini agent is desired here as well
    mini_agent="yes"
    FEATURETARGS="features"
-   FEATUREHEADERS="library/features.h agent/features.h agent/features-mibgroups.h features-snmpnetstat.h features-apps.h"
 
    # needed to bootstrap later checks
    echo "" > include/net-snmp/feature-details.h
    AC_DEFINE(NETSNMP_MINIMAL_CODE, 1,
      [Define if you want to remove all non-essential code features.])
+else
+   FEATUREHEADERS=""
 fi
 AC_ARG_WITH([minimalist],,NETSNMP_INVALID_ENABLE([minimalist]))
 AC_SUBST(FEATURETARGS)

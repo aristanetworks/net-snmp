@@ -462,7 +462,7 @@ sprint_realloc_octet_string(u_char ** buf, size_t * buf_len,
     const char     *saved_hint = hint;
     int             hex = 0, x = 0;
     u_char         *cp;
-    int             output_format, len_needed;
+    int             output_format, cnt;
 
     if ((var->type != ASN_OCTET_STR) && 
         (!netsnmp_ds_get_boolean(NETSNMP_DS_LIBRARY_ID, NETSNMP_DS_LIB_QUICKE_PRINT))) {
@@ -571,18 +571,11 @@ sprint_realloc_octet_string(u_char ** buf, size_t * buf_len,
                     break;
                 case 't': /* new in rfc 3411 */
                 case 'a':
-                    /* A string hint gives the max size - we may not need this much */
-                    len_needed = SNMP_MIN( width, ecp-cp );
-                    while ((*out_len + len_needed + 1) >= *buf_len) {
-                        if (!(allow_realloc && snmp_realloc(buf, buf_len))) {
-                            return 0;
-                        }
-                    }
-                    for (x = 0; x < width && cp < ecp; x++) {
-                        *(*buf + *out_len) = *cp++;
-                        (*out_len)++;
-                    }
-                    *(*buf + *out_len) = '\0';
+                    cnt = SNMP_MIN(width, ecp - cp);
+                    if (!sprint_realloc_asciistring(buf, buf_len, out_len,
+                                                    allow_realloc, cp, cnt))
+                        return 0;
+                    cp += cnt;
                     break;
                 default:
                     *out_len = saved_out_len;
@@ -2800,6 +2793,8 @@ netsnmp_mibindex_load( void )
               get_persistent_directory(), i );
         tmpbuf[sizeof(tmpbuf)-1] = 0;
         fp = fopen( tmpbuf, "r" );
+        if (!fp)
+            continue;
         cp = fgets( tmpbuf2, sizeof(tmpbuf2), fp );
         if ( !cp ) {
             DEBUGMSGTL(("mibindex", "Empty MIB index (%d)\n", i));
@@ -3057,14 +3052,11 @@ read_objid(const char *input, oid * output, size_t * out_len)
          * get past leading '.', append '.' to Prefix. 
          */
         if (*Prefix == '.')
-            strncpy(buf, Prefix + 1, sizeof(buf)-1);
+            strlcpy(buf, Prefix + 1, sizeof(buf));
         else
-            strncpy(buf, Prefix, sizeof(buf)-1);
-        buf[ sizeof(buf)-1 ] = 0;
-        strcat(buf, ".");
-        buf[ sizeof(buf)-1 ] = 0;
-        strncat(buf, input, sizeof(buf)-strlen(buf));
-        buf[ sizeof(buf)-1 ] = 0;
+            strlcpy(buf, Prefix, sizeof(buf));
+        strlcat(buf, ".", sizeof(buf));
+        strlcat(buf, input, sizeof(buf));
         input = buf;
     }
 #endif /* NETSNMP_DISABLE_MIB_LOADING */
@@ -5123,8 +5115,7 @@ print_tree_node(u_char ** buf, size_t * buf_len,
                 else
                     if (!snmp_cstrcat(buf, buf_len, out_len, allow_realloc, ", "))
                         return 0;
-                snprintf(str, sizeof(str), "%s", vp->vblabel);
-                str[ sizeof(str)-1 ] = 0;
+                strlcpy(str, vp->vblabel, sizeof(str));
                 len = strlen(str);
                 if (pos + len + 2 > width) {
                     if (!snmp_cstrcat(buf, buf_len, out_len, allow_realloc,
@@ -5737,8 +5728,7 @@ get_node(const char *name, oid * objid, size_t * objidlen)
         module = (char *) malloc((size_t) (cp - name + 1));
         if (!module)
             return SNMPERR_GENERR;
-        memcpy(module, name, (size_t) (cp - name));
-        module[cp - name] = 0;
+        sprintf(module, "%.*s", (int) (cp - name), name);
         cp++;                   /* cp now point to the subidentifier */
         if (*cp == ':')
             cp++;

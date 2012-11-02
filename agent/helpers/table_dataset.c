@@ -467,7 +467,7 @@ netsnmp_register_table_data_set(netsnmp_handler_registration *reginfo,
                            netsnmp_get_table_data_set_handler(data_set));
     ret = netsnmp_register_table_data(reginfo, data_set->table,
                                        table_info);
-    if (reginfo->handler)
+    if (ret == SNMPERR_SUCCESS && reginfo->handler)
         netsnmp_handler_owns_table_info(reginfo->handler->next);
     return ret;
 }
@@ -1105,9 +1105,11 @@ netsnmp_config_parse_table_set(const char *token, char *line)
         switch (tp->access) {
         case MIB_ACCESS_CREATE:
             table_set->allow_creation = 1;
+            /* fallthrough */
         case MIB_ACCESS_READWRITE:
         case MIB_ACCESS_WRITEONLY:
             canwrite = 1;
+            /* fallthrough */
         case MIB_ACCESS_READONLY:
             DEBUGMSGTL(("table_set_add_table",
                         "adding column %ld of type %d\n", tp->subid, type));

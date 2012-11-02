@@ -613,7 +613,7 @@ void
 dump_chunk(const char *debugtoken, const char *title, const u_char * buf,
            int size)
 {
-    u_int           printunit = 64;     /* XXX  Make global. */
+    int             printunit = 64;     /* XXX  Make global. */
     char            chunk[SNMP_MAXBUF], *s, *sp;
 
     if (title && (*title != '\0')) {
@@ -626,8 +626,8 @@ dump_chunk(const char *debugtoken, const char *title, const u_char * buf,
     sp = s;
 
     while (size > 0) {
-        if (size > (int) printunit) {
-            strncpy(chunk, sp, printunit);
+        if (size > printunit) {
+            memcpy(chunk, sp, printunit);
             chunk[printunit] = '\0';
             DEBUGMSGTL((debugtoken, "\t%s\n", chunk));
         } else {
@@ -803,15 +803,10 @@ dump_snmpEngineID(const u_char * estring, size_t * estring_len)
 
     case 4:                    /* Text. */
 
-        /*
-         * Doesn't exist on all (many) architectures 
-         */
-        /*
-         * s += snprintf(s, remaining_len+3, "\"%s\"", esp); 
-         */
-        s += sprintf(s, "\"%.*s\"", sizeof(buf)-strlen(buf)-3, esp);
+        s += sprintf(s, "\"%.*s\"", (int) (sizeof(buf)-strlen(buf)-3), esp);
         goto dump_snmpEngineID_quit;
         break;
+
      /*NOTREACHED*/ case 5:    /* Octets. */
 
         snprint_hexstring(s, (SNMP_MAXBUF - (s-buf)),
@@ -820,6 +815,7 @@ dump_snmpEngineID(const u_char * estring, size_t * estring_len)
         s -= 1;
         goto dump_snmpEngineID_quit;
         break;
+
        /*NOTREACHED*/ dump_snmpEngineID_violation:
     case 0:                    /* Violation of RESERVED, 
                                  * *   -OR- of expected length.
@@ -935,7 +931,7 @@ void netsnmp_get_monotonic_clock(struct timeval* tv)
      * expect an error of <= 100 ppm for the rate at which this clock
      * increases.
      */
-    typedef ULONGLONG WINAPI (*pfGetTickCount64)(void);
+    typedef ULONGLONG (WINAPI * pfGetTickCount64)(void);
     static int s_initialized;
     static pfGetTickCount64 s_pfGetTickCount64;
     uint64_t now64;
@@ -964,8 +960,9 @@ void netsnmp_get_monotonic_clock(struct timeval* tv)
     tv->tv_sec = now64 / 1000;
     tv->tv_usec = (now64 % 1000) * 1000;
 #else
-#error Not sure how to query a monotonically increasing clock on your system. \
-Please report this to net-snmp-coders@lists.sourceforge.net.
+    /* At least FreeBSD 4 doesn't provide monotonic clock support. */
+#warning Not sure how to query a monotonically increasing clock on your system. \
+Timers will not work correctly if the system clock is adjusted by e.g. ntpd.
     gettimeofday(tv, NULL);
 #endif
 }
@@ -1028,13 +1025,13 @@ uatime_hdiff(const_marker_t first, const_marker_t second)
 }
 
 /**
- * Test: Has (marked time plus delta) exceeded current time (in msec) ?
+ * Test: Has (marked time plus delta) exceeded current time ?
  * Returns 0 if test fails or cannot be tested (no marker).
  *
  * \deprecated Use netsnmp_ready_monotonic() instead.
  */
 int
-atime_ready(const_marker_t pm, int deltaT)
+atime_ready(const_marker_t pm, int delta_ms)
 {
     marker_t        now;
     long            diff;
@@ -1045,21 +1042,21 @@ atime_ready(const_marker_t pm, int deltaT)
 
     diff = atime_diff(pm, now);
     free(now);
-    if (diff < deltaT)
+    if (diff < delta_ms)
         return 0;
 
     return 1;
 }
 
+#ifndef NETSNMP_FEATURE_REMOVE_UATIME_READY
 /**
- * Test: Has (marked time plus delta) exceeded current time (in msec) ?
+ * Test: Has (marked time plus delta) exceeded current time ?
  * Returns 0 if test fails or cannot be tested (no marker).
  *
  * \deprecated Use netsnmp_ready_monotonic() instead.
  */
-#ifndef NETSNMP_FEATURE_REMOVE_UATIME_READY
 int
-uatime_ready(const_marker_t pm, unsigned int deltaT)
+uatime_ready(const_marker_t pm, unsigned int delta_ms)
 {
     marker_t        now;
     u_long          diff;
@@ -1070,7 +1067,7 @@ uatime_ready(const_marker_t pm, unsigned int deltaT)
 
     diff = uatime_diff(pm, now);
     free(now);
-    if (diff < deltaT)
+    if (diff < delta_ms)
         return 0;
 
     return 1;

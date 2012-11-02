@@ -22,7 +22,9 @@
  * When compiling with the MSVC workspace, this must be set manually.
  * See the PACKAGE_VERSION variable in Unix /configure script
 */
+#ifndef PACKAGE_VERSION
 #define PACKAGE_VERSION "unknown"
+#endif
 
 /* Define HAVE_WIN32_PLATFORM_SDK if you have:
  * Microsoft Visual Studio MSVC 6.0 and the Platform SDK (PSDK)
@@ -60,7 +62,7 @@
 
 /* default list of mibs to load */
 
-#define NETSNMP_DEFAULT_MIBS "IP-MIB;IF-MIB;TCP-MIB;UDP-MIB;HOST-RESOURCES-MIB;SNMPv2-MIB;RFC1213-MIB;NOTIFICATION-LOG-MIB;UCD-SNMP-MIB;UCD-DEMO-MIB;SNMP-TARGET-MIB;NET-SNMP-AGENT-MIB;DISMAN-EVENT-MIB;SNMP-VIEW-BASED-ACM-MIB;SNMP-COMMUNITY-MIB;UCD-DLMOD-MIB;SNMP-FRAMEWORK-MIB;SNMP-MPD-MIB;SNMP-USER-BASED-SM-MIB;SNMP-NOTIFICATION-MIB;SNMPv2-TM"
+#define NETSNMP_DEFAULT_MIBS "IP-MIB;IF-MIB;TCP-MIB;UDP-MIB;HOST-RESOURCES-MIB;SNMPv2-MIB;RFC1213-MIB;NOTIFICATION-LOG-MIB;UCD-SNMP-MIB;UCD-DEMO-MIB;SNMP-TARGET-MIB;NET-SNMP-AGENT-MIB;DISMAN-EVENT-MIB;SNMP-VIEW-BASED-ACM-MIB;SNMP-COMMUNITY-MIB;SNMP-FRAMEWORK-MIB;SNMP-MPD-MIB;SNMP-USER-BASED-SM-MIB;SNMP-NOTIFICATION-MIB;SNMPv2-TM"
 
 /* default location to look for mibs to load using the above tokens
    and/or those in the MIBS envrionment variable*/
@@ -944,13 +946,17 @@
 /* #undef PACKAGE_BUGREPORT */
 
 /* Define to the full name of this package. */
+#ifndef PACKAGE_NAME
 #define PACKAGE_NAME "Net-SNMP"
+#endif
 
 /* Define to the full name and version of this package. */
 /* #undef PACKAGE_STRING */
 
 /* Define to the one symbol short name of this package. */
+#ifndef PACKAGE_TARNAME
 #define PACKAGE_TARNAME "net-snmp"
+#endif
 
 /* Define to the version of this package. */
 /* #undef PACKAGE_VERSION */
@@ -1326,9 +1332,6 @@
 /* UNdefine to allow specifying zero-length community string */
 /* #define NETSNMP_NO_ZEROLENGTH_COMMUNITY 1 */
 
-/* #define NETSNMP_EXIT_ON_BAD_KLREAD  */
-/* define to exit the agent on a bad kernel read */
-
 #define NETSNMP_LASTFIELD -1      /* internal define */
 
 /* configure options specified */
@@ -1357,6 +1360,12 @@
 
 /* Define to 1 if you have the <openssl/aes.h> header file. */
 #define HAVE_OPENSSL_AES_H 1
+
+/* Define to 1 if you have the `EVP_MD_CTX_create' function. */
+#define HAVE_EVP_MD_CTX_CREATE 1
+
+/* Define to 1 if you have the `EVP_MD_CTX_destroy' function. */
+#define HAVE_EVP_MD_CTX_DESTROY 1
 
 /* Define to 1 if you have the `AES_cfb128_encrypt' function. */
 #define HAVE_AES_CFB128_ENCRYPT 1
@@ -1570,15 +1579,14 @@ typedef unsigned short mode_t;
 #ifndef HAVE_STDINT_H
 typedef unsigned char uint8_t;
 typedef char int8_t;
-typedef unsigned short uint16_t;
-typedef short int16_t;
+typedef unsigned __int16 uint16_t;
+typedef __int16 int16_t;
 typedef unsigned __int32 uint32_t;
-typedef long int32_t;
+typedef __int32 int32_t;
 typedef unsigned __int64 uint64_t;
 typedef __int64 int64_t;
 typedef unsigned __int64 uintmax_t;
 typedef __int64 intmax_t;
-typedef unsigned short   uint16_t;
 #else /* HAVE_STDINT_H */
 #include <stdint.h>
 #endif /* HAVE_STDINT_H */
@@ -1663,9 +1671,9 @@ enum {
 #endif     /* NETSNMP_USE_DLL */
 
 /* MSVC OpenSSL linker settings. */
-#if defined(WIN32) && !defined(mingw32)
+#if defined(_MSC_VER)
 #  if defined(NETSNMP_USE_OPENSSL)
-#    ifdef NETSNMP_USE_DLL
+#    ifdef _DLL
 #      ifdef _DEBUG
 #        pragma comment(lib, "libeay32MDd.lib")
 #      else
@@ -1679,6 +1687,7 @@ enum {
 #      endif
 #    endif
 #    pragma comment(lib, "gdi32.lib")
+#    pragma comment(lib, "user32.lib")
 #  endif
 #endif
 
