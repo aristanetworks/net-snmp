@@ -706,6 +706,8 @@ netsnmp_send_traps(int trap, int specific,
             snmp_free_pdu(template_v2pdu);
             return -1;
         }
+        DEBUGMSGOID(("trap", trap_vb->val.objid, trap_vb->val_len / sizeof(oid)));
+        DEBUGMSG(( "trap", "\n"));
         if (!snmp_oid_compare(vblist->val.objid, OID_LENGTH(trap_prefix),
                               trap_prefix,       OID_LENGTH(trap_prefix))) {
             var = find_varbind_in_list( template_v2pdu->variables,
