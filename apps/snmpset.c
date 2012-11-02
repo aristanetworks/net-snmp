@@ -169,7 +169,6 @@ main(int argc, char *argv[])
         if (arg < argc) {
             switch (*argv[arg]) {
             case '=':
-            case '3':
             case 'i':
             case 'u':
             case '3':
