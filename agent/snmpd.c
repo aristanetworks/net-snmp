@@ -1086,9 +1086,9 @@ main(int argc, char *argv[])
 #endif
 
     /*
-     * Send coldstart trap if possible.  
+     * Send nsNotifyStart trap if possible.  
      */
-    send_easy_trap(0, 0);
+    send_easy_trap(SNMP_TRAP_ENTERPRISESPECIFIC, 1);
 
     /*
      * We're up, log our version number.  
