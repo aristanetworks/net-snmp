@@ -5755,8 +5755,10 @@ _sess_read(void *sessp, netsnmp_large_fd_set * fdset)
                 /*
                  * Illegal length, drop the connection.  
                  */
+                char *transport_str = 
+                   netsnmp_transport_peer_string(transport, opaque, olength);
                 snmp_log(LOG_ERR, 
-			 "Received broken packet. Closing session.\n");
+			 "Received broken packet. Closing session: %s.\n", transport_str);
 		if (sp->callback != NULL) {
 		  DEBUGMSGTL(("sess_read",
 			      "perform callback with op=DISCONNECT\n"));
