@@ -146,6 +146,7 @@ snmp_pdu_create(int command)
         pdu->time = 0;
         pdu->reqid = snmp_get_next_reqid();
         pdu->msgid = snmp_get_next_msgid();
+        pdu->once = 0;
     }
     return pdu;
 

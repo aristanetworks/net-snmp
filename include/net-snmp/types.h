@@ -193,6 +193,9 @@ typedef struct snmp_pdu {
     u_long          time;   
     u_long          flags;
 
+    /** If 1, don't resend the message. */
+    int             once;
+
     int             securityModel;
     /** noAuthNoPriv, authNoPriv, authPriv */
     int             securityLevel;  
@@ -396,6 +399,9 @@ struct snmp_session {
     /** target param name */
     char           *paramName;
 
+    /** If 1, an open request request is in progress */
+    int             openReqPending;
+
     /**
      * security module specific 
      */
@@ -413,6 +419,10 @@ struct snmp_session {
      * XXX: or should we add a new field into this structure?
      */
     void           *myvoid;
+
+    void           *agentxData;
+
+    void (*free_session_callback)(netsnmp_session *ss);
 };
 
 

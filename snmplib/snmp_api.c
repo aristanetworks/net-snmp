@@ -1805,6 +1805,9 @@ create_user_from_session(netsnmp_session * session) {
 static void
 snmp_free_session(netsnmp_session * s)
 {
+    if (s->free_session_callback) {
+        s->free_session_callback(s);
+    }
     if (s) {
         SNMP_FREE(s->localname);
         SNMP_FREE(s->peername);
@@ -1935,6 +1938,8 @@ snmp_close(netsnmp_session * session)
         snmp_res_unlock(MT_LIBRARY_ID, MT_LIB_SESSION);
     }                           /*END MTCRITICAL_RESOURCE */
     if (slp == NULL) {
+        DEBUGMSGTL(("sess_async_send",
+                    "_sess_async_send returned 0 because slp is NULL\n"));
         return 0;
     }
     return snmp_sess_close((void *) slp);
@@ -4762,18 +4767,18 @@ _sess_async_send(void *sessp,
         transport = slp->transport;
         if (!session || !isp || !transport) {
             DEBUGMSGTL(("sess_async_send", "send fail: closing...\n"));
-            snmp_log(LOG_WARNING,
-                     "_sess_async_send returned 0:(session,isp,transport)=(%d,%d,%d)\n",
-                     session == NULL,
-                     isp == NULL,
-                     transport == NULL );
+            DEBUGMSGTL(("sess_async_send",
+                        "_sess_async_send returned 0:(session,isp,transport)=(%d,%d,%d)\n",
+                        session == NULL,
+                        isp == NULL,
+                        transport == NULL ));
             return 0;
         }
     }
 
     if (pdu == NULL) {
-        snmp_log(LOG_WARNING,
-                  "_sess_async_send returned 0 because pdu is NULL\n");
+        DEBUGMSGTL(("sess_async_send",
+                    "_sess_async_send returned 0 because pdu is NULL\n"));
         session->s_snmp_errno = SNMPERR_NULL_PDU;
         return 0;
     }
@@ -4787,8 +4792,8 @@ _sess_async_send(void *sessp,
     if (pdu->version == SNMP_DEFAULT_VERSION) {
         if (session->version == SNMP_DEFAULT_VERSION) {
             session->s_snmp_errno = SNMPERR_BAD_VERSION;
-            snmp_log(LOG_WARNING,
-                     "_sess_async_send returned 0 when pdu->version == SNMP_DEFAULT_VERSION\n");
+            DEBUGMSGTL(("sess_async_send",
+                        "_sess_async_send returned 0 when pdu->version == SNMP_DEFAULT_VERSION\n"));
             return 0;
         }
         pdu->version = session->version;
@@ -4800,9 +4805,9 @@ _sess_async_send(void *sessp,
         /*
          * ENHANCE: we should support multi-lingual sessions  
          */
-        snmp_log(LOG_WARNING,
-                 "_sess_async_send returned 0:(pdu->version,session->version)=(%ld,%ld)\n",
-                 pdu->version, session->version);
+        DEBUGMSGTL(("sess_async_send",
+                    "_sess_async_send returned 0:(pdu->version,session->version)=(%ld,%ld)\n",
+                    pdu->version, session->version));
         session->s_snmp_errno = SNMPERR_BAD_VERSION;
         return 0;
     }
@@ -4837,8 +4842,8 @@ _sess_async_send(void *sessp,
         DEBUGMSGTL(("snmpv3_build", "delayed probe for engineID\n"));
         rc = snmpv3_engineID_probe(slp, session);
         if (rc == 0) {
-            snmp_log(LOG_WARNING,
-                     "_sess_async_send:snmpv3_engineID_probe returned 0\n");
+            DEBUGMSGTL(("sess_async_send",
+                        "_sess_async_send:snmpv3_engineID_probe returned 0\n"));
             return 0; /* s_snmp_errno already set */
         }
     }
@@ -4876,8 +4881,8 @@ _sess_async_send(void *sessp,
         case SNMP_MSG_REPORT:
         case SNMP_MSG_INFORM:
             session->s_snmp_errno = snmp_errno = SNMPERR_NO_VARS;
-            snmp_log(LOG_WARNING,
-                     "_sess_async_send returned 0 because of wrong pdu->command\n");
+            DEBUGMSGTL(("sess_async_send",
+                        "_sess_async_send returned 0 because of wrong pdu->command\n"));
             return 0;
         case SNMP_MSG_TRAP:
             break;
@@ -4916,7 +4921,8 @@ _sess_async_send(void *sessp,
     }
 
     if (result < 0) {
-        DEBUGMSGTL(("sess_async_send", "encoding failure\n"));
+        DEBUGMSGTL(("sess_async_send",
+                    "_sess_async_send returned 0 because of encoding failure\n"));
         SNMP_FREE(pktbuf);
         snmp_log(LOG_WARNING,
                  "_sess_async_send returned 0 because of encoding failure\n");
@@ -4972,18 +4978,18 @@ _sess_async_send(void *sessp,
     if (result < 0) {
         session->s_snmp_errno = SNMPERR_BAD_SENDTO;
         session->s_errno = errno;
-        snmp_log(LOG_WARNING,
-                 "_sess_async_send returned 0 because result=%d(errno=%d:%s)\n",
-                 result,errno,strerror(errno));
+        DEBUGMSGTL(("sess_async_send",
+                    "_sess_async_send returned 0 because result=%d(errno=%d:%s)\n",
+                    result,errno,strerror(errno)));
         if (transport) {
            void **opaque = &(pdu->transport_data);
            int *olength = &(pdu->transport_data_length);
            char *transport_str = netsnmp_transport_peer_string(transport,
                                                                opaque ? *opaque : NULL,
                                                                olength ? *olength : 0);
-           snmp_log(LOG_WARNING,
-                    "_sess_async_send returned 0: transport=%s\n",
-                    transport_str);
+           DEBUGMSGTL(("sess_async_send",
+                       "_sess_async_send returned 0: transport=%s\n",
+                       transport_str));
         }
         return 0;
     }
@@ -4994,6 +5000,7 @@ _sess_async_send(void *sessp,
      * Add to pending requests list if we expect a response.  
      */
     if (pdu->flags & UCD_MSG_FLAG_EXPECT_RESPONSE) {
+        DEBUGMSGTL(("sess_async_send", "expecting response\n"));
         netsnmp_request_list *rp;
         struct timeval  tv;
 
@@ -5001,8 +5008,8 @@ _sess_async_send(void *sessp,
                                              sizeof(netsnmp_request_list));
         if (rp == NULL) {
             session->s_snmp_errno = SNMPERR_GENERR;
-            snmp_log(LOG_WARNING,
-                     "_sess_async_send returned 0 because rp == NULL\n");
+            DEBUGMSGTL(("sess_async_send",
+                        "_sess_async_send returned 0 because rp == NULL\n"));
             return 0;
         }
 
@@ -5012,27 +5019,49 @@ _sess_async_send(void *sessp,
         rp->message_id = pdu->msgid;
         rp->callback = callback;
         rp->cb_data = cb_data;
-        rp->retries = 0;
+
+        if (pdu->once) {
+            // The request is retried as long rp->retries <= session->retries
+            // (rp->retries is incremented on each retry).  We want to avoid
+            // that, hance we set the request retries higher than the session
+            // retries.
+            rp->retries = 1 + session->retries;
+        } else {
+            rp->retries = 0;
+        }
+
+        DEBUGMSGTL(("sess_async_send", "retries: %d, session->retries: %d\n",
+                    rp->retries, session->retries));
+
         if (pdu->flags & UCD_MSG_FLAG_PDU_TIMEOUT) {
             rp->timeout = pdu->time * 1000000L;
         } else {
             rp->timeout = session->timeout;
         }
+
+        DEBUGMSGTL(("sess_async_send", "timeout: %ld, session->timeout: %ld\n",
+                    rp->timeout, session->timeout));
+
         rp->timeM = tv;
         tv.tv_usec += rp->timeout;
         tv.tv_sec += tv.tv_usec / 1000000L;
         tv.tv_usec %= 1000000L;
         rp->expireM = tv;
 
+        DEBUGMSGTL(("sess_async_send", "pdu->sessid: %ld, session->sessid: %ld\n",
+                    pdu->sessid, session->sessid));
+
         /*
          * XX lock should be per session ! 
          */
         snmp_res_lock(MT_LIBRARY_ID, MT_LIB_SESSION);
         if (isp->requestsEnd) {
+            DEBUGMSGTL(("sess_async_send", "Adding request: %ld\n", reqid));
             rp->next_request = isp->requestsEnd->next_request;
             isp->requestsEnd->next_request = rp;
             isp->requestsEnd = rp;
         } else {
+            DEBUGMSGTL(("sess_async_send", "Adding first request: %ld\n", reqid));
             rp->next_request = isp->requests;
             isp->requests = rp;
             isp->requestsEnd = rp;
@@ -5042,6 +5071,7 @@ _sess_async_send(void *sessp,
         /*
          * No response expected...  
          */
+        DEBUGMSGTL(("sess_async_send", "not expecting response\n"));
         if (reqid) {
             /*
              * Free v1 or v2 TRAP PDU iff no error  
@@ -5062,8 +5092,8 @@ snmp_sess_async_send(void *sessp,
 
     if (sessp == NULL) {
         snmp_errno = SNMPERR_BAD_SESSION;       /*MTCRITICAL_RESOURCE */
-        snmp_log(LOG_WARNING,
-                  "snmp_sess_async_send returned 0 because sessp is NULL\n");
+        DEBUGMSGTL(("sess_async_send",
+                    "snmp_sess_async_send returned 0 because sessp is NULL\n"));
         return (0);
     }
     /*
@@ -5321,6 +5351,10 @@ _sess_process_packet(void *sessp, netsnmp_session * sp,
       pdu->securityStateRef = NULL;
     }
 
+    if( isp->requests == NULL ){
+       DEBUGMSGTL(("sess_process_packet", "no pending requests\n"));
+    }
+
     for (rp = isp->requests; rp; orp = rp, rp = rp->next_request) {
       snmp_callback   callback;
       void           *magic;
@@ -5344,6 +5378,8 @@ _sess_process_packet(void *sessp, netsnmp_session * sp,
 	}
       } else {
 	if (rp->request_id != pdu->reqid) {
+           DEBUGMSGTL(("sess_process_packet", "unmatched request id: %ld != %ld\n",
+                       rp->request_id, pdu->reqid));
 	  continue;
 	}
       }
@@ -5427,13 +5463,17 @@ _sess_process_packet(void *sessp, netsnmp_session * sp,
 	 * Successful, so delete request.  
 	 */
 	if (isp->requests == rp) {
+          DEBUGMSGTL(("sess_async_send", "(success) deleting head request: %ld\n", pdu->reqid));
 	  isp->requests = rp->next_request;
 	  if (isp->requestsEnd == rp) {
+            DEBUGMSGTL(("sess_async_send",  "(success) all requests deleted\n"));
 	    isp->requestsEnd = NULL;
 	  }
 	} else {
+          DEBUGMSGTL(("sess_async_send", "(success) deleting request: %ld\n", pdu->reqid));
 	  orp->next_request = rp->next_request;
 	  if (isp->requestsEnd == rp) {
+            DEBUGMSGTL(("sess_async_send", "(success) deleted last request in the list\n"));
 	    isp->requestsEnd = orp;
 	  }
 	}
@@ -5516,7 +5556,14 @@ snmp_read2(netsnmp_large_fd_set * fdset)
 {
     struct session_list *slp;
     snmp_res_lock(MT_LIBRARY_ID, MT_LIB_SESSION);
+
+    DEBUGMSGTL(("snmp_read2", "current sessions:\n"));
     for (slp = Sessions; slp; slp = slp->next) {
+        DEBUGMSGTL(("snmp_read2", "  session %p slp=%p\n", slp->session, slp));
+    }
+
+    for (slp = Sessions; slp; slp = slp->next) {
+        DEBUGMSGTL(("snmp_read2", "reading for session %p slp=%p\n", slp->session, slp));
         snmp_sess_read2((void *) slp, fdset);
     }
     snmp_res_unlock(MT_LIBRARY_ID, MT_LIB_SESSION);
@@ -6359,13 +6406,23 @@ snmp_sess_timeout(void *sessp)
                              rp->pdu->reqid, rp->pdu, magic);
                 }
                 if (isp->requests == rp) {
+                    DEBUGMSGTL(("sess_async_send",
+                                "(timeout) deleting head request: %ld\n",
+                                rp->pdu->reqid));
                     isp->requests = rp->next_request;
                     if (isp->requestsEnd == rp) {
+                        DEBUGMSGTL(("sess_async_send",
+                                    "(timeout) all requests deleted\n"));
                         isp->requestsEnd = NULL;
                     }
                 } else {
+                    DEBUGMSGTL(("sess_async_send",
+                                "(timeout) deleting request: %ld\n",
+                                rp->pdu->reqid));
                     orp->next_request = rp->next_request;
                     if (isp->requestsEnd == rp) {
+                       DEBUGMSGTL(("sess_async_send",
+                                   "(timeout) deleted last request in the list\n"));
                         isp->requestsEnd = orp;
                     }
                 }

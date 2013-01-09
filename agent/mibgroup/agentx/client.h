@@ -27,7 +27,11 @@ extern          "C" {
                                          const char *);
     int             agentx_remove_agentcaps(netsnmp_session *, const oid *,
                                             size_t);
-    int             agentx_send_ping(netsnmp_session *);
+
+    int             agentx_send_ping(netsnmp_session *, snmp_callback callback,
+                                     void * cb_data);
+    void            agentx_ping_succeeded(netsnmp_session *);
+
 
 #define AGENTX_CLOSE_OTHER    1
 #define AGENTX_CLOSE_PARSE    2
