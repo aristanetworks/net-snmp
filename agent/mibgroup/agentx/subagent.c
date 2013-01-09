@@ -93,6 +93,12 @@ netsnmp_session *agentx_callback_sess = NULL;
 extern int      callback_master_num;
 extern netsnmp_session *main_session;   /* from snmp_agent.c */
 
+static int
+agentx_ping_callback(int op, netsnmp_session * ss, int reqid,
+                     netsnmp_pdu *pdu, void *magic);
+static void
+agentx_ping_failure_callback(unsigned int clientreg, void *clientarg);
+
 int
 subagent_startup(int majorID, int minorID,
                              void *serverarg, void *clientarg)
@@ -744,8 +750,10 @@ subagent_shutdown(int majorID, int minorID, void *serverarg, void *clientarg)
 	main_session = NULL;
 	return 0;
     }
+
     agentx_close_session(thesession, AGENTX_CLOSE_SHUTDOWN);
     snmp_close(thesession);
+
     if (main_session != NULL) {
         remove_trap_session(main_session);
         main_session = NULL;
@@ -1035,7 +1043,8 @@ subagent_register_ping_alarm(int majorID, int minorID,
 
 /*
  * check a session validity for connectivity to the master agent.  If
- * not functioning, close and start attempts to reopen the session 
+ * not functioning, the callback for the ping closes and starts attempts to
+ * reopen the session.
  */
 void
 agentx_check_session(unsigned int clientreg, void *clientarg)
@@ -1048,48 +1057,94 @@ agentx_check_session(unsigned int clientreg, void *clientarg)
     }
     DEBUGMSGTL(("agentx/subagent", "checking status of session %p\n", ss));
 
-    if (!agentx_send_ping(ss)) {
-        snmp_log(LOG_WARNING,
-                 "AgentX master agent failed to respond to ping.  Attempting to re-register.\n");
-        /*
-         * master agent disappeared?  Try and re-register.
-         * close first, just to be sure .
-         */
-        agentx_unregister_callbacks(ss);
-        agentx_close_session(ss, AGENTX_CLOSE_TIMEOUT);
+    if (!agentx_send_ping(ss, agentx_ping_callback, (void *) clientreg)) {
+        snmp_log(LOG_WARNING, "AgentX ping request failed.\n");
+        DEBUGMSGTL(("agentx/subagent",
+                    "failed to send ping request for session %p\n", ss));
         snmp_alarm_unregister(clientreg);       /* delete ping alarm timer */
-        snmp_call_callbacks(SNMP_CALLBACK_APPLICATION,
-                            SNMPD_CALLBACK_INDEX_STOP, (void *) ss);
-        register_mib_detach();
-        if (main_session != NULL) {
-            remove_trap_session(ss);
-            snmp_close(main_session);
-            /*
-             * We need to remove the callbacks attached to the callback
-             * session because they have a magic callback data structure
-             * which includes a pointer to the main session
-             *    (which is no longer valid).
-             * 
-             * Given that the main session is not responsive anyway.
-             * it shoudn't matter if we lose some outstanding requests.
-             */
-            if (agentx_callback_sess != NULL ) {
-                snmp_close(agentx_callback_sess);
-                agentx_callback_sess = NULL;
-    
-                subagent_init_callback_session();
-            }
-            main_session = NULL;
-            agentx_reopen_session(0, NULL);
-        }
-        else {
-            snmp_close(main_session);
-            main_session = NULL;
-        }
+        agentx_ping_failure_callback(0, ss);
     } else {
-        DEBUGMSGTL(("agentx/subagent", "session %p responded to ping\n",
-                    ss));
+       DEBUGMSGTL(("agentx/subagent",
+                   "ping request for session %p sent successfully\n", ss));
     }
+}
+
+static int
+agentx_ping_callback(int op, netsnmp_session * ss, int reqid,
+                     netsnmp_pdu *pdu, void *magic)
+{
+    if (op == NETSNMP_CALLBACK_OP_RECEIVED_MESSAGE &&
+        pdu->errstat == SNMP_ERR_NOERROR) {
+        DEBUGMSGTL(("agentx/subagent", "session %p responded to ping\n", ss));
+
+        /*
+         * Synchronise sysUpTime with the master agent
+         */
+        netsnmp_set_agent_uptime(pdu->time);
+
+        ss->s_snmp_errno = SNMPERR_SUCCESS;
+        agentx_ping_succeeded(ss);
+    } else if (op == NETSNMP_CALLBACK_OP_DISCONNECT) {
+        ss->s_snmp_errno = SNMPERR_ABORT;
+        return 1;
+    } else {
+        int alarmreg = (int) magic;
+
+        const char * cause;
+        if (op == NETSNMP_CALLBACK_OP_TIMED_OUT) {
+            ss->s_snmp_errno = SNMPERR_TIMEOUT;
+            cause = "AgentX master agent failed to respond to ping";
+        } else {
+            ss->s_snmp_errno = SNMPERR_GENERR;
+            cause = "Unable to ping AgentX master agent";
+        }
+        snmp_log(LOG_WARNING, "%s.  Will attempt to re-register.\n", cause);
+
+        snmp_alarm_unregister(alarmreg);       /* delete ping alarm timer */
+        snmp_alarm_register(0, 0, agentx_ping_failure_callback, ss);
+    }
+    return 1;
+}
+
+// Alarm callback used to defer reopening the session when a ping fails
+static void
+agentx_ping_failure_callback(unsigned int clientreg, void *clientarg)
+{
+   netsnmp_session *ss = (netsnmp_session *)clientarg;
+
+   /*
+    * master agent disappeared?  Try and re-register.
+    * close first, just to be sure .
+    */
+   agentx_unregister_callbacks(ss);
+
+   agentx_close_session(ss, AGENTX_CLOSE_TIMEOUT);
+   snmp_call_callbacks(SNMP_CALLBACK_APPLICATION,
+                       SNMPD_CALLBACK_INDEX_STOP, (void *) ss);
+   register_mib_detach();
+   if (main_session != NULL) {
+       snmp_close(main_session);
+       /*
+        * We need to remove the callbacks attached to the callback
+        * session because they have a magic callback data structure
+        * which includes a pointer to the main session
+        *    (which is no longer valid).
+        * 
+        * Given that the main session is not responsive anyway.
+        * it shoudn't matter if we lose some outstanding requests.
+        */
+       if (agentx_callback_sess != NULL ) {
+           snmp_close(agentx_callback_sess);
+           agentx_callback_sess = NULL;
+ 
+           subagent_init_callback_session();
+       }
+       main_session = NULL;
+       agentx_reopen_session(0, NULL);
+   } else {
+       snmp_close(main_session);
+       main_session = NULL;
+   }
 }
 
 

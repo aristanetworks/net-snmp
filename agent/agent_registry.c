@@ -893,11 +893,11 @@ netsnmp_subtree_load(netsnmp_subtree *new_sub, const char *context_name)
                                                  1, &buf_overflow,
                                                  new_sub->start_a,
                                                  new_sub->start_len);
-                    snmp_log(LOG_ERR,
-                             "duplicate registration: MIB modules %s and %s (oid %s%s).\n",
-                             next->label_a, new_sub->label_a,
-                             buf ? buf : "",
-                             buf_overflow ? " [TRUNCATED]" : "");
+                    DEBUGMSGTL(("register_mib",
+                                "duplicate registration: MIB modules %s and %s (oid %s%s).\n",
+                                next->label_a, new_sub->label_a,
+                                buf ? buf : "",
+                                buf_overflow ? " [TRUNCATED]" : ""));
                     free(buf);
                 }
 		return MIB_DUPLICATE_REGISTRATION;

@@ -42,6 +42,57 @@
 #include "agentx/client.h"
 #include "agentx/subagent.h"
 
+struct reg_list {
+    netsnmp_pdu *pdu;
+    int reqid;
+    struct reg_list *next;
+};
+typedef struct reg_list reg_list;
+
+typedef struct {
+    reg_list *pendingRegistrations;
+    reg_list *pendingRegistrationsLast;
+} agentx_data;
+
+static agentx_data *
+sess_agentx_data(netsnmp_session *ss)
+{
+    return (agentx_data *)ss->agentxData;
+}
+
+static void
+sess_set_agentx_data(netsnmp_session *ss, agentx_data *data);
+
+static void
+sess_free_agentx_data(netsnmp_session *ss)
+{
+    DEBUGMSGTL(("agentx/subagent", "sess_free_agentx_data\n"));
+    agentx_data *agentxData = sess_agentx_data(ss);
+    if (agentxData) {
+        reg_list *rp = agentxData->pendingRegistrations;
+        while (rp) {
+            reg_list *nrp = rp->next;
+            /* The PDUs themselves are freed by snmp_sess_close. */
+            free(rp);
+            rp = nrp;
+        }
+        DEBUGMSGTL(("agentx/subagent", "free sess_free_agentx_data element\n"));
+        free(agentxData);
+        sess_set_agentx_data(ss, NULL);
+    }
+}
+
+static void
+sess_set_agentx_data(netsnmp_session *ss, agentx_data *data)
+{
+    DEBUGMSGTL(("agentx/subagent", "set_agentx_data\n"));
+    if (data) {
+        netsnmp_assert(!ss->agentxData);
+    }
+    ss->agentxData = data;
+    ss->free_session_callback = &sess_free_agentx_data;
+}
+
 netsnmp_feature_require(set_agent_uptime)
 
         /*
@@ -59,7 +110,15 @@ agentx_synch_input(int op,
     struct synch_state *state = (struct synch_state *) magic;
 
     if (!state || reqid != state->reqid) {
-        return handle_agentx_packet(op, session, reqid, pdu, magic);
+        if (!session->openReqPending) {
+            return handle_agentx_packet(op, session, reqid, pdu, magic);
+        } else {
+           /* While awaiting a synchronous response for opening a session,
+              we drop all packets. */
+           DEBUGMSGTL(("agentx/subagent",
+                       "Packet dropped while attempting to open session."));
+           return 0;
+        }
     }
 
     DEBUGMSGTL(("agentx/subagent", "synching input, op 0x%02x\n", op));
@@ -127,7 +186,10 @@ agentx_open_session(netsnmp_session * ss)
     snmp_add_var(pdu, version_sysoid, version_sysoid_len,
 		 's', "Net-SNMP AgentX sub-agent");
 
-    if (agentx_synch_response(ss, pdu, &response) != STAT_SUCCESS)
+    ss->openReqPending = 1;
+    int rc = agentx_synch_response(ss, pdu, &response);
+
+    if (rc != STAT_SUCCESS)
         return 0;
 
     if (!response)
@@ -141,6 +203,18 @@ agentx_open_session(netsnmp_session * ss)
     ss->sessid = response->sessid;
     snmp_free_pdu(response);
 
+    /* Allocate list of pending registration requests. */
+    agentx_data *agentxData = (agentx_data *) malloc(sizeof(agentx_data));
+    if (agentxData) {
+        agentxData->pendingRegistrations = NULL;
+        agentxData->pendingRegistrationsLast = NULL;
+        DEBUGMSGTL(("agentx/subagent", "allocating agentx_data\n"));
+        sess_set_agentx_data(ss, agentxData);
+    } else {
+        DEBUGMSGTL(("agentx/subagent", "unable to allocate agentx_data\n"));
+        return 0;
+    }
+
     DEBUGMSGTL(("agentx/subagent", "open \n"));
     return 1;
 }
@@ -148,7 +222,7 @@ agentx_open_session(netsnmp_session * ss)
 int
 agentx_close_session(netsnmp_session * ss, int why)
 {
-    netsnmp_pdu    *pdu, *response;
+    netsnmp_pdu    *pdu;
     DEBUGMSGTL(("agentx/subagent", "closing session\n"));
 
     if (ss == NULL || !IS_AGENTX_VERSION(ss->version)) {
@@ -162,9 +236,128 @@ agentx_close_session(netsnmp_session * ss, int why)
     pdu->errstat = why;
     pdu->sessid = ss->sessid;
 
-    if (agentx_synch_response(ss, pdu, &response) == STAT_SUCCESS)
-        snmp_free_pdu(response);
+    pdu->once = 1;
+    snmp_send(ss, pdu);
+
     DEBUGMSGTL(("agentx/subagent", "closed\n"));
+
+    return 1;
+}
+
+static void
+agentx_data_remove_request(netsnmp_session * ss, int reqid)
+{
+    DEBUGMSGTL(("agentx/subagent", "agentx_data_remove_request\n"));
+    agentx_data *agentxData = sess_agentx_data(ss);
+    reg_list **rlp = &agentxData->pendingRegistrations;
+
+    reg_list *prev = NULL;
+    while (*rlp) {
+        if ((*rlp)->reqid == reqid) {
+            DEBUGMSGTL(("agentx/subagent",
+                        "clearing pending register request %ld (pdu %p)\n",
+                        reqid, (*rlp)->pdu));
+            reg_list *tmp = *rlp;
+            *rlp = (*rlp)->next;
+
+            free(tmp);
+            break;
+        } else {
+            prev = *rlp;
+            rlp = &((*rlp)->next);
+        }
+    }
+
+    agentxData->pendingRegistrationsLast = prev;
+    if( agentxData->pendingRegistrations == NULL ) {
+        netsnmp_assert( agentxData->pendingRegistrationsLast == NULL );
+        DEBUGMSGTL(("agentx/subagent",
+                    "all pending registrations cleared\n"));
+    }
+}
+
+static int
+agentx_register_request_callback(int op, netsnmp_session * ss, int reqid,
+                                 netsnmp_pdu *pdu, void *magic)
+{
+    agentx_data *agentxData = sess_agentx_data(ss);
+    reg_list *rp;
+
+    if (!agentxData->pendingRegistrations) {
+        DEBUGMSGTL(("agentx/subagent",
+                    "All pending registrations have already been completed.\n"));
+        return 1;
+    }
+
+    if (op == NETSNMP_CALLBACK_OP_RECEIVED_MESSAGE &&
+        pdu->errstat == SNMP_ERR_NOERROR) {
+        DEBUGMSGTL(("agentx/subagent", "register request %ld (pdu %p) succeeded\n",
+                    reqid, magic));
+        agentx_data_remove_request(ss, reqid);
+
+        /*
+         * Synchronise sysUpTime with the master agent
+         */
+        // See BUG46916
+        // netsnmp_set_agent_uptime(pdu->time);
+
+        ss->s_snmp_errno = SNMPERR_SUCCESS;
+        return 1;
+    } else if (op == NETSNMP_CALLBACK_OP_DISCONNECT) {
+        ss->s_snmp_errno = SNMPERR_ABORT;
+        agentx_data_remove_request(ss, reqid);
+        return 1;
+    } else if (op == NETSNMP_CALLBACK_OP_RECEIVED_MESSAGE) {
+        DEBUGMSGTL(("agentx/subagent",
+                    "register request %ld (pdu %p) got an error response: %d\n",
+                    reqid, pdu, pdu->errstat));
+
+        ss->s_snmp_errno = SNMPERR_GENERR;
+        /* Original request succeded on the master agent side, but response timed out. */
+        if (pdu->errstat == AGENTX_ERR_DUPLICATE_REGISTRATION) {
+            DEBUGMSGTL(("agentx/subagent",
+                        "AGENTX_ERR_DUPLICATE_REGISTRATION response\n",
+                        reqid, pdu, pdu->errstat));
+            agentx_data_remove_request(ss, reqid);
+            return 1;
+       }
+    } else if (op == NETSNMP_CALLBACK_OP_TIMED_OUT) {
+        ss->s_snmp_errno = SNMPERR_TIMEOUT;
+        DEBUGMSGTL(("agentx/subagent",
+                    "register request %d (pdu %p) timed out\n", reqid, pdu));
+    } else {
+        netsnmp_assert(!"unexpected callback operation");
+        return 0;
+    }
+
+    /* Received timeout or error response. */
+    for (rp = agentxData->pendingRegistrations; rp; rp = rp->next) {
+        if (reqid == rp->reqid) {
+            netsnmp_pdu *newpdu;
+            DEBUGMSGTL(("agentx/subagent",
+                        "failed registration was pending as %p\n", rp));
+
+            /* _sess_process_packet will free the current PDU. */
+            newpdu = snmp_clone_pdu(rp->pdu);
+            if (newpdu) {
+                newpdu->flags = rp->pdu->flags;
+                newpdu->time = rp->pdu->time;
+                newpdu->once = rp->pdu->once;
+            } else {
+                DEBUGMSGTL(("agentx/subagent", "unable to clone pdu\n"));
+            }
+            rp->pdu = newpdu;
+
+            /* If the clone fails, the registration will be cleaned up by
+               agentx_register_request_callback at the next successful registration (or
+               when the session is closed). */
+
+            /* reqid = 0 flags that the registration should be retried at the end of
+               a ping request */
+            rp->reqid = 0;
+            break;
+        }
+    }
 
     return 1;
 }
@@ -174,7 +367,7 @@ agentx_register(netsnmp_session * ss, oid start[], size_t startlen,
                 int priority, int range_subid, oid range_ubound,
                 int timeout, u_char flags, const char *contextName)
 {
-    netsnmp_pdu    *pdu, *response;
+   netsnmp_pdu    *pdu;
 
     DEBUGMSGTL(("agentx/subagent", "registering: "));
     DEBUGMSGOIDRANGE(("agentx/subagent", start, startlen, range_subid,
@@ -189,7 +382,11 @@ agentx_register(netsnmp_session * ss, oid start[], size_t startlen,
     if (pdu == NULL) {
         return 0;
     }
-    pdu->time = timeout;
+
+    pdu->time = 0;
+    pdu->flags &= ~(UCD_MSG_FLAG_PDU_TIMEOUT);
+    pdu->once = 1;
+
     pdu->priority = priority;
     pdu->sessid = ss->sessid;
     pdu->range_subid = range_subid;
@@ -211,20 +408,40 @@ agentx_register(netsnmp_session * ss, oid start[], size_t startlen,
         snmp_add_null_var(pdu, start, startlen);
     }
 
-    if (agentx_synch_response(ss, pdu, &response) != STAT_SUCCESS) {
-        DEBUGMSGTL(("agentx/subagent", "registering failed!\n"));
+    int reqid = snmp_async_send(ss, pdu, agentx_register_request_callback, pdu);
+    if (reqid) {
+        DEBUGMSGTL(("agentx/subagent", "register request %ld (pdu %p) successfully sent\n",
+                    reqid, pdu));
+
+        agentx_data *agentxData = sess_agentx_data(ss);
+        reg_list *rp = (reg_list *) malloc(sizeof(reg_list));
+
+        if (!rp) {
+            /* Continue in case the registration still succeeds. */
+           DEBUGMSGTL(("agentx/subagent",
+                       "failed to record pending registration\n"));
+            return 1;
+        }
+
+        rp->pdu = pdu;
+        rp->reqid = reqid;
+        rp->next = NULL;
+
+       if (!agentxData->pendingRegistrations) {
+           agentxData->pendingRegistrations = rp;
+        } else {
+           netsnmp_assert(agentxData->pendingRegistrationsLast);
+           agentxData->pendingRegistrationsLast->next = rp;
+        }
+        agentxData->pendingRegistrationsLast = rp;
+
+        return 1;
+    } else {
+        DEBUGMSGTL(("agentx/subagent", "failed to send register pdu %p\n",
+                    pdu));
+        snmp_free_pdu(pdu);
         return 0;
     }
-
-    if (response->errstat != SNMP_ERR_NOERROR) {
-        snmp_log(LOG_ERR,"registering pdu failed: %ld!\n", response->errstat);
-        snmp_free_pdu(response);
-        return 0;
-    }
-
-    snmp_free_pdu(response);
-    DEBUGMSGTL(("agentx/subagent", "registered\n"));
-    return 1;
 }
 
 int
@@ -465,9 +682,9 @@ agentx_remove_agentcaps(netsnmp_session * ss,
 }
 
 int
-agentx_send_ping(netsnmp_session * ss)
+agentx_send_ping(netsnmp_session * ss, snmp_callback callback, void *cb_data)
 {
-    netsnmp_pdu    *pdu, *response;
+   netsnmp_pdu    *pdu;
 
     if (ss == NULL) {
        snmp_log(LOG_WARNING,
@@ -489,24 +706,54 @@ agentx_send_ping(netsnmp_session * ss)
        return 0;
     }
     pdu->time = 0;
+    pdu->flags &= ~(UCD_MSG_FLAG_PDU_TIMEOUT);
     pdu->sessid = ss->sessid;
+    pdu->once = 1;
 
-    int syncResponse = agentx_synch_response(ss, pdu, &response);
-    if (syncResponse != STAT_SUCCESS) {
-       snmp_log(LOG_WARNING,
-                "agentx_synch_response returned %d\n",
-                syncResponse);
-        return 0;
+    int reqid = snmp_async_send(ss, pdu, callback, cb_data);
+    return reqid != 0;
+}
+
+void
+agentx_ping_succeeded(netsnmp_session * ss)
+{
+    agentx_data *agentxData = sess_agentx_data(ss);
+
+    reg_list **rlp = &agentxData->pendingRegistrations;
+    reg_list *prev = NULL;
+
+    while (*rlp) {
+        if ((*rlp)->reqid == 0) {
+            if (!(*rlp)->pdu) {
+                DEBUGMSGTL(("agentx/subagent",
+                            "clearing pending register request %ld because pdu is NULL\n",
+                            (*rlp)->reqid));
+                reg_list *tmp = *rlp;
+                *rlp = (*rlp)->next;
+                free(tmp);
+            } else {
+                netsnmp_pdu *pdu = (*rlp)->pdu;
+
+                int reqid = snmp_async_send(ss, pdu, agentx_register_request_callback, pdu);
+                if (reqid) {
+                    DEBUGMSGTL(("agentx/subagent", "resent register request %d, pdu %p\n",
+                                reqid, pdu));
+                } else {
+                    DEBUGMSGTL(("agentx/subagent", "failed to resend register pdu\n"));
+                }
+
+                (*rlp)->reqid = reqid;
+
+                prev = *rlp;
+                rlp = &((*rlp)->next);
+            }
+        }
     }
 
-    if (response->errstat != SNMP_ERR_NOERROR) {
-       snmp_log(LOG_WARNING,
-                "agentx_synch_response returned response->errstat = %d\n",
-                response->errstat );
-        snmp_free_pdu(response);
-        return 0;
+    agentxData->pendingRegistrationsLast = prev;
+    if( agentxData->pendingRegistrations == NULL ) {
+        netsnmp_assert( agentxData->pendingRegistrationsLast == NULL );
+        DEBUGMSGTL(("agentx/subagent",
+                    "all pending registrations cleared\n"));
     }
-
-    snmp_free_pdu(response);
-    return 1;
 }
