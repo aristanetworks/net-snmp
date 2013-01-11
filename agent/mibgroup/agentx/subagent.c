@@ -1123,6 +1123,7 @@ agentx_ping_failure_callback(unsigned int clientreg, void *clientarg)
                        SNMPD_CALLBACK_INDEX_STOP, (void *) ss);
    register_mib_detach();
    if (main_session != NULL) {
+       remove_trap_session(ss);
        snmp_close(main_session);
        /*
         * We need to remove the callbacks attached to the callback
