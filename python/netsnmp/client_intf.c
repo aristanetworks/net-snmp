@@ -281,7 +281,7 @@ value_to_pyobject(char * buf, size_t buf_len, netsnmp_variable_list * var,
 {
    u_char* ip;
    struct enum_list *ep;
-   PyObject *obj = NULL;
+   PyObject *obj = Py_None;
    u_char *cp;
    int len;
    int bit;
@@ -325,8 +325,7 @@ value_to_pyobject(char * buf, size_t buf_len, netsnmp_variable_list * var,
          break;
 
       case ASN_NULL:
-         obj = Py_None;
-         Py_INCREF(obj);
+         /* implicit None */
          break;
 
       case ASN_OBJECT_ID:
@@ -338,8 +337,7 @@ value_to_pyobject(char * buf, size_t buf_len, netsnmp_variable_list * var,
       case SNMP_ENDOFMIBVIEW:
       case SNMP_NOSUCHOBJECT:
       case SNMP_NOSUCHINSTANCE:
-         obj = Py_None;
-         Py_INCREF(obj);
+         /* implicit None */
          break;
 
       case ASN_COUNTER64:
@@ -368,6 +366,7 @@ value_to_pyobject(char * buf, size_t buf_len, netsnmp_variable_list * var,
          if (var->val.floatVal) {
             obj = PyFloat_FromDouble(*var->val.floatVal);
          } else {
+            /* implicit None */
             PyErr_SetString(PyExc_ValueError,
                             "Failed to convert ASN_OPAQUE_FLOAT value");
          }
@@ -377,6 +376,7 @@ value_to_pyobject(char * buf, size_t buf_len, netsnmp_variable_list * var,
          if (var->val.doubleVal) {
             obj = PyFloat_FromDouble(*var->val.doubleVal);
          } else {
+            /* implicit None */
             PyErr_SetString(PyExc_ValueError,
                             "Failed to convert ASN_OPAQUE_DOUBLE value");
          }
@@ -385,8 +385,17 @@ value_to_pyobject(char * buf, size_t buf_len, netsnmp_variable_list * var,
 
       case ASN_NSAP:
       default:
+         /* implicit None */
          PyErr_SetString(PyExc_ValueError, "Unknown ASN type");
          break;
+   }
+   if (obj == Py_None) {
+      /*
+       * If obj is still Py_None, that means we are
+       * actually returning None, and so have to add
+       * a reference.
+       */
+      Py_INCREF( obj );
    }
 
    return obj;
